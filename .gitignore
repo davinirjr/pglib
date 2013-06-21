@@ -1,0 +1,10 @@
+setup.cfg
+MANIFEST
+build
+dist
+TAGS
+*.pdb
+*.pyc
+*.pyo
+tmp
+pglib.egg-info
