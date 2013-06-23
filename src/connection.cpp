@@ -1,7 +1,7 @@
 
 #include "pglib.h"
 #include "connection.h"
-#include "result.h"
+#include "resultset.h"
 #include "errors.h"
 
 PyObject* Connection_New(const char* conninfo)
@@ -145,7 +145,7 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
     ExecStatusType status = PQresultStatus(result);
     if (status == PGRES_TUPLES_OK)
         // Result_New will take ownership of `result`.
-        return Result_New(result);
+        return ResultSet_New(result);
 
     switch (status)
     {

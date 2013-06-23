@@ -25,7 +25,7 @@ static const ResultErrorField errorFields[] =
     { "function",          PG_DIAG_SOURCE_FUNCTION,    0 }
 };
 
-PyObject* SetResultError(PGresult* result)
+PyObject* SetResultError(PGresult* r)
 {
     // Creates an exception from `result`.
     //
@@ -35,7 +35,7 @@ PyObject* SetResultError(PGresult* result)
 
     // TODO: Make a new exception class that always has SQLSTATE
 
-    // These two are required.
+    Result result(r); // make sure `r` gets cleared no matter what
 
     const char* szMessage  = PQresultErrorMessage(result);
     const char* szSQLSTATE = PQresultErrorField(result, PG_DIAG_SQLSTATE);

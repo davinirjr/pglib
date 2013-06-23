@@ -76,4 +76,26 @@ struct Object
 };
 
 
+struct Result
+{
+    PGresult* p;
+    Result(PGresult* _p = 0) { p = _p; }
+    ~Result()
+    {
+        if (p)
+            PQclear(p);
+    }
+
+    void operator=(PGresult* _p) { p = _p; }
+
+    operator PGresult*() { return p; }
+
+    PGresult* Detach()
+    {
+        PGresult* tmp = p;
+        p = 0;
+        return tmp;
+    }
+};
+
 #endif // PGLIB_H

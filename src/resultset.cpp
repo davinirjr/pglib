@@ -1,37 +1,34 @@
 
 #include "pglib.h"
-#include "result.h"
+#include "resultset.h"
 
-PyObject* Result_New(PGresult* result)
+PyObject* ResultSet_New(PGresult* result)
 {
-    Result* r = PyObject_NEW(Result, &ResultType);
-
-    if (r != 0)
-    {
-        r->result = result;
-    }
-    else
+    ResultSet* rset = PyObject_NEW(ResultSet, &ResultSetType);
+    if (rset == 0)
     {
         PQclear(result);
+        return 0;
     }
-    
-    return reinterpret_cast<PyObject*>(r);
+
+    rset->result = result;
+    return reinterpret_cast<PyObject*>(rset);
 }
 
-static void Result_dealloc(PyObject* self)
+static void ResultSet_dealloc(PyObject* self)
 {
-    Result* r = (Result*)self;
-    PQclear(r->result);
+    ResultSet* rset = (ResultSet*)self;
+    PQclear(rset->result);
     PyObject_Del(self);
 }
 
-PyTypeObject ResultType =
+PyTypeObject ResultSetType =
 {
     PyVarObject_HEAD_INIT(0, 0)
-    "pglib.Result",
-    sizeof(ResultType),
+    "pglib.ResultSet",
+    sizeof(ResultSetType),
     0,
-    Result_dealloc,
+    ResultSet_dealloc,
     0,                          // tp_print
     0,                          // tp_getattr
     0,                          // tp_setattr
@@ -54,9 +51,9 @@ PyTypeObject ResultType =
     0,                          // tp_weaklistoffset
     0,                          // tp_iter
     0,                          // tp_iternext
-    0, //Result_methods,         // tp_methods
+    0, //ResultSet_methods,         // tp_methods
     0,                          // tp_members
-    0, // Result_getset,          // tp_getset
+    0, // ResultSet_getset,          // tp_getset
     0,                          // tp_base
     0,                          // tp_dict
     0,                          // tp_descr_get

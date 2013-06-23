@@ -1,6 +1,7 @@
 
 #include "pglib.h"
 #include "connection.h"
+#include "resultset.h"
 
 PyObject* pModule = 0;
 PyObject* Error;
@@ -84,7 +85,7 @@ static struct PyModuleDef moduledef = {
 
 PyMODINIT_FUNC PyInit_pglib()
 {
-    if (PyType_Ready(&ConnectionType) < 0)
+    if (PyType_Ready(&ConnectionType) < 0 || PyType_Ready(&ResultSetType) < 0)
         return 0;
 
     Error = PyErr_NewException("pglib.Error", 0, 0);
