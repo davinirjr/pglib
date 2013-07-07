@@ -6,6 +6,12 @@
 PyObject* pModule = 0;
 PyObject* Error;
 
+PyObject* strComma;
+PyObject* strParens;
+PyObject* strLeftParen;
+PyObject* strRightParen;
+PyObject* strEmpty;
+
 static char module_doc[] = "A straightforward library for PostgreSQL";
 
 static char doc_defaults[] = "Returns the dictionary of default conninfo values.";
@@ -82,10 +88,29 @@ static struct PyModuleDef moduledef = {
     0,                          // m_free
 };
 
+static bool InitConstants()
+{
+    strComma = PyUnicode_FromString(",");
+    strParens = PyUnicode_FromString("()");
+    strLeftParen = PyUnicode_FromString("(");
+    strRightParen = PyUnicode_FromString(")");
+    strEmpty = PyUnicode_FromString("");
+
+    return (
+        strComma != 0 &&
+        strParens != 0 &&
+        strLeftParen != 0 &&
+        strRightParen != 0 &&
+        strEmpty
+    );
+}
 
 PyMODINIT_FUNC PyInit_pglib()
 {
     if (PyType_Ready(&ConnectionType) < 0 || PyType_Ready(&ResultSetType) < 0)
+        return 0;
+
+    if (!InitConstants())
         return 0;
 
     Error = PyErr_NewException("pglib.Error", 0, 0);
@@ -94,5 +119,13 @@ PyMODINIT_FUNC PyInit_pglib()
 
     Object module(PyModule_Create(&moduledef));
     
+    if (!module)
+        return 0;
+
+    const char* szVersion = TOSTRING(PGLIB_VERSION);
+    PyModule_AddStringConstant(module, "version", (char*)szVersion);
+
+    PyModule_AddObject(module, "Error", Error);
+
     return module.Detach();
 }

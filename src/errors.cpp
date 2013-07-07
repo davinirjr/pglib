@@ -35,7 +35,7 @@ PyObject* SetResultError(PGresult* r)
 
     // TODO: Make a new exception class that always has SQLSTATE
 
-    Result result(r); // make sure `r` gets cleared no matter what
+    ResultHolder result(r); // make sure `r` gets cleared no matter what
 
     const char* szMessage  = PQresultErrorMessage(result);
     const char* szSQLSTATE = PQresultErrorField(result, PG_DIAG_SQLSTATE);

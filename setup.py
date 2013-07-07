@@ -34,16 +34,15 @@ def get_version():
     if not match:
         sys.exit('Unable to determine version.')
 
-    parts = [ int(n or 0) for n in match.groups() ]
+    parts      = [ int(n or 0) for n in match.groups() ]
+    prerelease = ''
+
     if parts[-1] > 0:
         # We are building the next version, so increment the patch and add the word 'beta'.
         parts[-2] += 1
-        parts[-1] = 'rc%02d' % parts[-1]
-    else:
-        # No modifications since last tag, so remove the last number.
-        del parts[-1]
+        prerelease = '-rc%02d' % parts[-1]
 
-    return '.'.join(str(part) for part in parts)
+    return '.'.join(str(part) for part in parts[:3]) + prerelease
 
 
 def getoutput(cmd):

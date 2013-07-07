@@ -3,6 +3,23 @@
 #include "connection.h"
 #include "resultset.h"
 #include "errors.h"
+#include "params.h"
+#include "getdata.h"
+#include "row.h"
+
+static const char* EXEC_STATUS_TEXT[] = 
+{
+    "PGRES_EMPTY_QUERY",
+    "PGRES_COMMAND_OK",
+    "PGRES_TUPLES_OK",
+    "PGRES_COPY_OUT",
+    "PGRES_COPY_IN",
+    "PGRES_BAD_RESPONSE",
+    "PGRES_NONFATAL_ERROR",
+    "PGRES_FATAL_ERROR",
+    "PGRES_COPY_BOTH"
+};
+
 
 PyObject* Connection_New(const char* conninfo)
 {
@@ -35,95 +52,42 @@ PyObject* Connection_New(const char* conninfo)
     return reinterpret_cast<PyObject*>(cnxn);
 }
 
-struct Params
-{
-    Oid*   types;
-    char** values;
-    int*   lengths;
-    int*   formats;
-    
-    Params(int count)
-    {
-        types   = (Oid*)  malloc(count * sizeof(Oid));
-        values  = (char**)malloc(count * sizeof(char*));
-        lengths = (int*)  malloc(count * sizeof(int));
-        formats = (int*)  malloc(count * sizeof(int));
-    }
-
-    bool valid() const
-    {
-        return types && values && lengths && formats;
-    }
-
-    ~Params()
-    {
-        free(types);
-        free(values);
-        free(lengths);
-        free(formats);
-    }
-};
-
-static bool BindParams(Params& params, PyObject* args)
-{
-    // Binds arguments 1-n.  Argument zero is expected to be the SQL statement itself.
-
-    if (!params.valid())
-    {
-        PyErr_NoMemory();
-        return false;
-    }
-
-    for (int i = 0, c = PyTuple_GET_SIZE(args)-1; i < c; i++)
-    {
-        PyObject* param = PyTuple_GET_ITEM(args, i+1);
-        if (param == Py_None)
-        {
-            params.types[i]   = 0;
-            params.values[i]  = 0;
-            params.lengths[i] = 0;
-            params.formats[i] = 0;
-        }
-        else
-        {
-            PyErr_Format(Error, "Unable to bind parameter %d: unhandled object type %s", (i+1), param->ob_type->tp_name);
-            return false;
-        }
-    }
-}
-
-static PyObject* Connection_execute(PyObject* self, PyObject* args)
+static PGresult* internal_execute(PyObject* self, PyObject* args)
 {
     Connection* cnxn = (Connection*)self;
-
+    
     // TODO: Check connection state.
 
     Py_ssize_t cParams = PyTuple_Size(args) - 1;
     if (cParams < 0)
     {
-        PyErr_SetString(PyExc_TypeError, "execute() takes at least 1 argument (0 given)");
+        PyErr_SetString(PyExc_TypeError, "Expected at least 1 argument (0 given)");
         return 0;
     }
 
     PyObject* pSql = PyTuple_GET_ITEM(args, 0);
     if (!PyUnicode_Check(pSql))
     {
-        PyErr_SetString(PyExc_TypeError, "The first argument to execute must be a string.");
+        PyErr_SetString(PyExc_TypeError, "The first argument must be a string.");
         return 0;
     }
 
-    // Note: PQexec allows multiple statements separated by semicolons, but PQexecParams does not.  This means we
-    // support multiple when no parameters are passed.
+    // printf("SQL: %s\n", PyUnicode_AsUTF8(pSql));
 
     PGresult* result = 0;
     if (cParams == 0)
     {
-        result = PQexec(cnxn->pgconn, PyUnicode_AsUTF8(pSql));
+        // result = PQexec(cnxn->pgconn, PyUnicode_AsUTF8(pSql));
+
+        result = PQexecParams(cnxn->pgconn, PyUnicode_AsUTF8(pSql),
+                              0, 0, 0, 0, 0, 
+                              1); // binary format
+
     }
     else
     {
         Params params(cParams);
-        if (!BindParams(params, args))
+        if (!BindParams(cnxn, params, args))
             return 0;
 
         result = PQexecParams(cnxn->pgconn, PyUnicode_AsUTF8(pSql),
@@ -142,14 +106,35 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
         return 0;
     }
 
+    return result;
+}
+
+
+static PyObject* Connection_execute(PyObject* self, PyObject* args)
+{
+    PGresult* result = internal_execute(self, args);
+
     ExecStatusType status = PQresultStatus(result);
+
+    // printf("status: %s\n", EXEC_STATUS_TEXT[status]);
+
     if (status == PGRES_TUPLES_OK)
+    {
         // Result_New will take ownership of `result`.
         return ResultSet_New(result);
+    }
+    
+    if (status == PGRES_COMMAND_OK)
+    {
+        const char* sz = PQcmdTuples(result);
+        if (sz == 0 || *sz == 0)
+            Py_RETURN_NONE;
 
+        return PyLong_FromLong(atoi(sz));
+    }
+    
     switch (status)
     {
-    case PGRES_COMMAND_OK:
 	case PGRES_COPY_OUT:
 	case PGRES_COPY_IN:
     case PGRES_COPY_BOTH:
@@ -161,6 +146,72 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
     // SetResultError will take ownership of `result`.
     return SetResultError(result);
 }
+
+static PyObject* Connection_row(PyObject* self, PyObject* args)
+{
+    ResultHolder result = internal_execute(self, args);
+    if (result == 0)
+        return 0;
+
+    ExecStatusType status = PQresultStatus(result);
+
+    // printf("status: %s\n", EXEC_STATUS_TEXT[status]);
+
+    if (status != PGRES_TUPLES_OK)
+    {
+        PyErr_SetString(Error, "SQL wasn't a query");
+        return 0;
+    }
+
+    int cRows = PQntuples(result);
+
+    if (cRows == 0)
+    {
+        Py_RETURN_NONE;
+    }
+
+    if (cRows != 1)
+        return PyErr_Format(Error, "row query returned %d rows, not 1", cRows);
+            
+    Object rset = ResultSet_New(result);
+    if (rset == 0)
+        return 0;
+
+    result.Detach();
+
+    return Row_New((ResultSet*)rset.Get(), 0);
+}
+
+
+static PyObject* Connection_scalar(PyObject* self, PyObject* args)
+{
+    ResultHolder result = internal_execute(self, args);
+    if (result == 0)
+        return 0;
+
+    ExecStatusType status = PQresultStatus(result);
+
+    // printf("status: %s\n", EXEC_STATUS_TEXT[status]);
+
+    if (status != PGRES_TUPLES_OK)
+    {
+        PyErr_SetString(Error, "SQL wasn't a query");
+        return 0;
+    }
+
+    int cRows = PQntuples(result);
+
+    if (cRows == 0)
+    {
+        Py_RETURN_NONE;
+    }
+            
+    if (cRows != 1)
+        return PyErr_Format(Error, "scalar query returned %d rows, not 1", cRows);
+
+    return ConvertValue(result, 0, 0);
+}
+
 
 
 static void Connection_dealloc(PyObject* self)
@@ -188,6 +239,7 @@ static PyObject* Connection_server_version(PyObject* self, void* closure)
     Connection* cnxn = (Connection*)self;
     return PyLong_FromLong(PQserverVersion(cnxn->pgconn));
 }
+
 static PyObject* Connection_protocol_version(PyObject* self, void* closure)
 {
     UNUSED(closure);
@@ -195,15 +247,39 @@ static PyObject* Connection_protocol_version(PyObject* self, void* closure)
     return PyLong_FromLong(PQprotocolVersion(cnxn->pgconn));
 }
 
+static PyObject* Connection_server_encoding(PyObject* self, void* closure)
+{
+    UNUSED(closure);
+    Connection* cnxn = (Connection*)self;
+    const char* sz = PQparameterStatus(cnxn->pgconn, "server_encoding");
+    if (sz == 0)
+        return PyErr_NoMemory();
+    return PyUnicode_DecodeUTF8(sz, strlen(sz), 0);
+}
+
+static PyObject* Connection_client_encoding(PyObject* self, void* closure)
+{
+    UNUSED(closure);
+    Connection* cnxn = (Connection*)self;
+    const char* sz = PQparameterStatus(cnxn->pgconn, "client_encoding");
+    if (sz == 0)
+        return PyErr_NoMemory();
+    return PyUnicode_DecodeUTF8(sz, strlen(sz), 0);
+}
+
 static PyGetSetDef Connection_getset[] = {
     { (char*)"server_version",   (getter)Connection_server_version,   0, (char*)"The server version", 0 },
     { (char*)"protocol_version", (getter)Connection_protocol_version, 0, (char*)"The protocol version", 0 },
+    { (char*)"server_encoding",  (getter)Connection_server_encoding,  0, (char*)0, 0 },
+    { (char*)"client_encoding",  (getter)Connection_client_encoding,  0, (char*)0, 0 },
     { 0 }
 };
 
 static struct PyMethodDef Connection_methods[] =
 {
     { "execute", Connection_execute, METH_VARARGS, 0 },
+    { "row",     Connection_row,     METH_VARARGS, 0 },
+    { "scalar",  Connection_scalar,  METH_VARARGS, 0 },
     { 0, 0, 0, 0 }
 };
 

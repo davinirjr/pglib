@@ -2,10 +2,12 @@
 #ifndef PGLIB_H
 #define PGLIB_H
 
-extern "C" 
+extern "C"
 {
 #include <libpq-fe.h>
 }
+
+#include <stdint.h>
 
 #define PY_SSIZE_T_CLEAN 1
 
@@ -37,6 +39,39 @@ inline void UNUSED(...) { }
 
 extern PyObject* Error;
 
+// From pg_type.h
+#define BOOLOID         16
+#define INT2OID         21
+#define INT4OID         23
+#define TEXTOID         25
+#define VARCHAROID		1043
+#define NUMERICOID      1700
+
+
+// -----------------------------------------------------------------------------------------------
+// Debug
+
+#if defined(PGLIB_ASSERT)
+#if _MSC_VER
+  #include <crtdbg.h>
+#endif
+  inline void FailAssert(const char* szFile, int line, const char* szExpr)
+  {
+      printf("assertion failed: %s(%d)\n%s\n", szFile, line, szExpr);
+#if _MSC_VER
+      __debugbreak(); // _CrtDbgBreak();
+#else
+      assert(0);
+#endif
+  }
+  #define I(expr) if (!(expr)) FailAssert(__FILE__, __LINE__, #expr);
+  #define N(expr) if (expr) FailAssert(__FILE__, __LINE__, #expr);
+#else
+  #define I(expr)
+  #define N(expr)
+#endif
+
+
 
 // -----------------------------------------------------------------------------------------------
 // C++ wrappers for objects.  No exceptions.
@@ -47,7 +82,7 @@ struct Object
 
     // Borrows the reference (takes ownership without adding a new referencing).
     Object(PyObject* _p = 0) { p = _p; }
-    
+
     // If it still has the pointer, it dereferences it.
     ~Object() { Py_XDECREF(p); }
 
@@ -59,7 +94,7 @@ struct Object
         // I(p == 0);
         p = _p;
     }
-    
+
     void AttachAndIncrement(PyObject* _p)
     {
         // I(p == 0);
@@ -75,12 +110,56 @@ struct Object
     }
 };
 
-
-struct Result
+struct Tuple : public Object
 {
+    Tuple(Py_ssize_t len)
+        : Object(PyTuple_New(len))
+    {
+    }
+
+    void SetItem(Py_ssize_t i, PyObject* item)
+    {
+        PyTuple_SET_ITEM(this, i, item);
+    }
+
+    operator bool() { return p != 0; }
+
+    operator PyTupleObject*() { return (PyTupleObject*)p; }
+};
+
+struct List : public Object
+{
+    List(Py_ssize_t len)
+        : Object(PyList_New(len))
+    {
+    }
+
+    PyObject* Join(PyObject* sep)
+    {
+        PyUnicode_Join(sep, p);
+    }
+
+    bool AppendAndIncrement(PyObject* o)
+    {
+        if (PyList_Append(p, o) == -1)
+            return false;
+        Py_INCREF(o);
+        return true;
+    }
+
+    bool AppendAndBorrow(PyObject* o)
+    {
+        return PyList_Append(p, o) == 0;
+    }
+};
+
+struct ResultHolder
+{
+    // Designed to hold a result on the stack.
+
     PGresult* p;
-    Result(PGresult* _p = 0) { p = _p; }
-    ~Result()
+    ResultHolder(PGresult* _p = 0) { p = _p; }
+    ~ResultHolder()
     {
         if (p)
             PQclear(p);
@@ -97,5 +176,11 @@ struct Result
         return tmp;
     }
 };
+
+extern PyObject* strComma;
+extern PyObject* strParens;
+extern PyObject* strLeftParen;
+extern PyObject* strRightParen;
+extern PyObject* strEmpty;
 
 #endif // PGLIB_H

@@ -1,6 +1,7 @@
 
 #include "pglib.h"
 #include "resultset.h"
+#include "row.h"
 
 PyObject* ResultSet_New(PGresult* result)
 {
@@ -11,16 +12,60 @@ PyObject* ResultSet_New(PGresult* result)
         return 0;
     }
 
-    rset->result = result;
+    rset->result   = result;
+    rset->cRows    = PQntuples(result);
+    rset->cCols    = PQnfields(result);
+    rset->cFetched = 0;
+
     return reinterpret_cast<PyObject*>(rset);
 }
 
 static void ResultSet_dealloc(PyObject* self)
 {
     ResultSet* rset = (ResultSet*)self;
-    PQclear(rset->result);
+    if (rset->result)
+        PQclear(rset->result);
     PyObject_Del(self);
 }
+
+static PyObject* ResultSet_iter(PyObject* self)
+{
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* ResultSet_iternext(PyObject* self)
+{
+    ResultSet* rset = reinterpret_cast<ResultSet*>(self);
+
+    if (rset->cFetched >= PQntuples(rset->result))
+    {
+        PyErr_SetNone(PyExc_StopIteration);
+        return 0;
+    }
+
+    return Row_New(rset, rset->cFetched++);
+}
+
+/*
+static PyObject* ResultSet_getcolumns(ResultSet* self, void* closure)
+{
+    UNUSED(closure);
+
+    if (self->columns == 0)
+    {
+    }
+
+    Py_INCREF(self->first);
+    return self->first;
+}
+
+static PyMemberDef ResultSet_members[] =
+{
+    { (char*)"columns", T_OBJECT_EX, offsetof(ResultSet, columns), READONLY, 0 },
+    { 0 }
+};
+*/
 
 PyTypeObject ResultSetType =
 {
@@ -49,11 +94,11 @@ PyTypeObject ResultSetType =
     0,                          // tp_clear
     0,                          // tp_richcompare
     0,                          // tp_weaklistoffset
-    0,                          // tp_iter
-    0,                          // tp_iternext
-    0, //ResultSet_methods,         // tp_methods
-    0,                          // tp_members
-    0, // ResultSet_getset,          // tp_getset
+    ResultSet_iter,             // tp_iter
+    ResultSet_iternext,         // tp_iternext
+    0, // ResultSet_methods,         // tp_methods
+    0, // ResultSet_members,                          // tp_members
+    0,          // tp_getset
     0,                          // tp_base
     0,                          // tp_dict
     0,                          // tp_descr_get
