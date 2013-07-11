@@ -13,18 +13,18 @@ struct Pool
 
 void Dump(Params& params)
 {
-    printf("===============\n");
-    printf("pools\n");
+    // printf("===============\n");
+    // printf("pools\n");
     int count = 0;
     Pool* p = (Pool*)params.pool;
     while (p != 0)
     {
         count += 1;
-        printf(" [ 0x%p total=%d remaining=%d ]\n", p, (int)p->total, (int)p->remaining);
         // printf(" [ 0x%p total=%d remaining=%d ]\n", p, (int)p->total, (int)p->remaining);
+        // // printf(" [ 0x%p total=%d remaining=%d ]\n", p, (int)p->total, (int)p->remaining);
         p = p->next;
     }
-    printf("---------------\n");
+    // printf("---------------\n");
 }
 
 Params::Params(int _count)
@@ -72,9 +72,9 @@ char* Allocate(Params& params, size_t amount)
 {
     Pool** pp = reinterpret_cast<Pool**>(&params.pool);
 
-    printf("pool: %p\n", params.pool);
-    printf("pp:   %p\n", pp);
-    printf("*pp:  %p\n", *pp);
+    // printf("pool: %p\n", params.pool);
+    // printf("pp:   %p\n", pp);
+    // printf("*pp:  %p\n", *pp);
 
     // See if we have a pool that is large enough.
 
@@ -216,7 +216,7 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
 
     for (int i = 0, c = PyTuple_GET_SIZE(args)-1; i < c; i++)
     {
-        printf("parameter %d\n", i+1);
+        // printf("parameter %d\n", i+1);
         Dump(params);
 
         PyObject* param = PyTuple_GET_ITEM(args, i+1);
@@ -277,7 +277,7 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
         }
     }
 
-    printf("after\n");
+    // printf("after\n");
     Dump(params);
 
     return true;

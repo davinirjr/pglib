@@ -30,15 +30,16 @@ class PGTestCase(unittest.TestCase):
 
     # These are from the C++ code.  Keep them up to date.
 
-    # If we are reading a binary, string, or unicode value and do not know how large it is, we'll try reading 2K into a
-    # buffer on the stack.  We then copy into a new Python object.
-    SMALL_READ  = 2048
+    # # If we are reading a binary, string, or unicode value and do not know how large it is, we'll try reading 2K into a
+    # # buffer on the stack.  We then copy into a new Python object.
+    # SMALL_READ  = 2048
+    #  
+    # # A read guaranteed not to fit in the MAX_STACK_STACK stack buffer, but small enough to be used for varchar (4K max).
+    # LARGE_READ = 4000
 
-    # A read guaranteed not to fit in the MAX_STACK_STACK stack buffer, but small enough to be used for varchar (4K max).
-    LARGE_READ = 4000
+    STR_FENCEPOST_SIZES = [ 0, 1, 255, 256, 510, 511, 512, 1023, 1024, 2047, 2048, 4000, 4095, 4096, 4097, 10 * 1024, 20 * 1024 ]
 
-    SMALL_STRING = _generate_test_string(SMALL_READ)
-    LARGE_STRING = _generate_test_string(LARGE_READ)
+    STR_FENCEPOSTS = [ _generate_test_string(size) for size in STR_FENCEPOST_SIZES ]
 
     def __init__(self, conninfo, method_name):
         unittest.TestCase.__init__(self, method_name)
@@ -50,7 +51,6 @@ class PGTestCase(unittest.TestCase):
         for i in range(3):
             try:
                 self.cnxn.execute("drop table t%d" % i)
-                self.cnxn.commit()
             except:
                 pass
         
@@ -64,7 +64,39 @@ class PGTestCase(unittest.TestCase):
             # If we've already closed the cursor or connection, exceptions are thrown.
             pass
 
-    def test_insert(self):
+
+    def _test_strtype(self, sqltype, value, resulttype=None, colsize=None):
+        assert colsize is None or isinstance(colsize, int), colsize
+        assert colsize is None or (value is None or colsize >= len(value))
+
+        if colsize:
+            sql = "create table t1(s %s(%s))" % (sqltype, colsize)
+        else:
+            sql = "create table t1(s %s)" % sqltype
+
+        if resulttype is None:
+            resulttype = type(value)
+
+        self.cnxn.execute(sql)
+        self.cnxn.execute("insert into t1 values($1)", value)
+        v = self.cnxn.scalar("select * from t1")
+        self.assertEqual(type(v), resulttype)
+
+        if value is not None:
+            self.assertEqual(len(v), len(value))
+
+        # To allow buffer --> db --> bytearray tests, always convert the input to the expected result type before
+        # comparing.
+        if type(value) is not resulttype:
+            value = resulttype(value)
+
+        self.assertEqual(v, value)
+
+
+    def test_execute_ddl(self):
+        """
+        Ensure we can execute a DDL command and that it returns None.
+        """
         r = self.cnxn.execute("create table t1(a int, b int)")
         self.assertEqual(r, None)
 
@@ -76,7 +108,12 @@ class PGTestCase(unittest.TestCase):
             self.assertEqual(row.a, 'abc')
             self.assertEqual(row[0], 'abc')
 
+    def test_version(self):
+        self.assertEquals(3, len(pglib.version.split('.'))) # 1.3.1 etc.
 
+    #
+    # row
+    #
 
     def test_row_zero(self):
         self.cnxn.execute("create table t1(a int)")
@@ -95,22 +132,66 @@ class PGTestCase(unittest.TestCase):
         with self.assertRaises(pglib.Error):
             value = self.cnxn.row("select a from t1")
 
+    #
+    # resultset
+    #
+
+    def test_rset_length(self):
+        """
+        Ensure the len(ResultSet) returns the number of rows.
+        """
+        self.cnxn.execute("create table t1(i int)")
+        count = 4
+        for i in range(count):
+            self.cnxn.execute("insert into t1 values ($1)", i)
+        rset = self.cnxn.execute("select * from t1")
+        self.assertEquals(len(rset), 4)
+
+    def test_rset_index(self):
+        """
+        Ensure we can indexing into the ResultSet returns a Row.
+        """
+        self.cnxn.execute("create table t1(i int)")
+        count = 4
+        for i in range(count):
+            self.cnxn.execute("insert into t1 values ($1)", i)
+        rset = self.cnxn.execute("select * from t1")
+        row = rset[2]
+        self.assertEquals(row[0], 2)
+
+    #
+    # scalar
+    #
+
     def test_scalar_zero(self):
+        """
+        Ensure cnxn.scalar() returns None if no rows are selected.
+        """
         self.cnxn.execute("create table t1(a int)")
         value = self.cnxn.scalar("select a from t1")
         self.assertEqual(value, None)
         
     def test_scalar_one(self):
+        """
+        Ensure cnxn.scalar() returns the first column if one row is selected.
+        """
         self.cnxn.execute("create table t1(a int)")
         self.cnxn.execute("insert into t1 values (1)")
         value = self.cnxn.scalar("select a from t1")
         self.assertEqual(value, 1)
 
     def test_scalar_many(self):
+        """
+        Ensure cnxn.scalar() raises an exception if multiple rows are selected.
+        """
         self.cnxn.execute("create table t1(a int)")
         self.cnxn.execute("insert into t1 values (1), (2)")
         with self.assertRaises(pglib.Error):
             value = self.cnxn.scalar("select a from t1")
+
+    #
+    # tuple
+    #
 
     def test_row_to_tuple(self):
         self.cnxn.execute("create table t1(a varchar(20), b int)")
@@ -120,18 +201,86 @@ class PGTestCase(unittest.TestCase):
             t = tuple(row)
             self.assertEqual(t, ('one', 1))
 
-    # def test_iter_direct(self):
-    #     count = 0
-    #     for row in self.cnxn.execute(
-    #             """
-    #             select 1 a, 2 b
-    #             union all
-    #             select 3 a, 4 b
-    #             """):
-    #         count += 1
-    #         print(row)
-    #     self.assertEqual(2, count)
-    # 
+    #
+    # numeric
+    #
+
+    def test_smallint(self):
+        self.cnxn.execute("create table t1(a smallint)")
+        for value in [-32768, -1, 0, 1, 32767]:
+            self.cnxn.execute("insert into t1 values ($1)", value)
+        for value in [-32768, -1, 0, 1, 32767]:
+            result = self.cnxn.scalar("select a from t1 where a=$1", value)
+            self.assertEqual(result, value)
+
+    def test_integer(self):
+        self.cnxn.execute("create table t1(a integer)")
+        for value in [-2147483648, -32768, -1, 0, 1, 32767, 2147483647]:
+            self.cnxn.execute("insert into t1 values ($1)", value)
+        for value in [-2147483648, -32768, -1, 0, 1, 32767, 2147483647]:
+            result = self.cnxn.scalar("select a from t1 where a=$1", value)
+            self.assertEqual(result, value)
+
+    def test_bigint(self):
+        self.cnxn.execute("create table t1(a bigint)")
+        for value in [-9223372036854775808, -2147483648, -32768, -1, 0, 1, 32767, 2147483647, 9223372036854775807]:
+            self.cnxn.execute("insert into t1 values ($1)", value)
+        for value in [-2147483648, -32768, -1, 0, 1, 32767, 2147483647]:
+            result = self.cnxn.scalar("select a from t1 where a=$1", value)
+            self.assertEqual(result, value)
+
+    def test_serial(self):
+        self.cnxn.execute("create table t1(a serial, b varchar(20))")
+        self.cnxn.execute("insert into t1(b) values ('one')")
+        self.cnxn.execute("insert into t1(a, b) values (2147483647, 'max')")
+        for value in [1, 2147483647]:
+            result = self.cnxn.scalar("select a from t1 where a=$1", value)
+            self.assertEqual(result, value)
+
+    def test_decimal(self):
+        from decimal import Decimal
+
+        self.cnxn.execute("create table t1(a decimal(100,7))")
+        for s in ['-3.0000000']: # ['123456.7890']:
+            value = Decimal(s)
+            self.cnxn.execute("delete from t1")
+            self.cnxn.execute("insert into t1 values($1::decimal(100,4))", s)
+
+            result = self.cnxn.scalar("select a from t1")
+            self.assertEqual(result, value)
+
+    #
+    # varchar
+    #
+
+    def test_varchar_null(self):
+        self._test_strtype('varchar', None, colsize=100)
+
+    # Generate a test for each fencepost size: test_varchar_0, etc.
+    def _maketest(value):
+        def t(self):
+            self._test_strtype('varchar', value, colsize=len(value))
+        return t
+    for value in STR_FENCEPOSTS:
+        locals()['test_varchar_%s' % len(value)] = _maketest(value)
+
+    #
+    # char
+    #
+
+    def test_varchar_null(self):
+        self._test_strtype('char', None, colsize=100)
+
+    # Generate a test for each fencepost size: test_char_1, etc.
+    #
+    # Note: There is no test_char_0 since they are blank padded.
+    def _maketest(value):
+        def t(self):
+            self._test_strtype('char', value, colsize=len(value))
+        return t
+    for value in [v for v in STR_FENCEPOSTS if len(v) > 0]:
+        locals()['test_char_%s' % len(value)] = _maketest(value)
+
     # def test_columns(self):
     #     rset = self.cnxn.execute("select 1 a, 2 b")
     #     self.assertEqual(rset.columns, ("a", "b"))
@@ -142,63 +291,6 @@ class PGTestCase(unittest.TestCase):
     #     self.cnxn.execute("insert into t1 values ($1)", value)
     #     result  = self.cnxn.execute("select n from t1").fetchone()[0]
     #     self.assertEqual(value, result)
-    # 
-    # 
-    # def _test_strtype(self, sqltype, value, colsize=None):
-    #     """
-    #     The implementation for string, Unicode, and binary tests.
-    #     """
-    #     assert colsize is None or (value is None or colsize >= len(value))
-    # 
-    #     if colsize:
-    #         sql = "create table t1(s %s(%s))" % (sqltype, colsize)
-    #     else:
-    #         sql = "create table t1(s %s)" % sqltype
-    # 
-    #     self.cnxn.execute(sql)
-    #     self.cnxn.execute("insert into t1 values($1)", value)
-    #     v = self.cnxn.execute("select * from t1").fetchone()[0]
-    #     self.assertEqual(type(v), type(value))
-    # 
-    #     if value is not None:
-    #         self.assertEqual(len(v), len(value))
-    # 
-    #     self.assertEqual(v, value)
-    # 
-    # #
-    # # varchar
-    # #
-    # 
-    # def test_empty_varchar(self):
-    #     self._test_strtype('varchar', '', self.SMALL_READ)
-    # 
-    # def test_null_varchar(self):
-    #     self._test_strtype('varchar', None, self.SMALL_READ)
-    # 
-    # def test_large_null_varchar(self):
-    #     # There should not be a difference, but why not find out?
-    #     self._test_strtype('varchar', None, self.LARGE_READ)
-    # 
-    # def test_small_varchar(self):
-    #     self._test_strtype('varchar', self.SMALL_STRING, self.SMALL_READ)
-    # 
-    # def test_large_varchar(self):
-    #     self._test_strtype('varchar', self.LARGE_STRING, self.LARGE_READ)
-    # 
-    # def test_varchar_many(self):
-    #     self.cnxn.execute("create table t1(c1 varchar(300), c2 varchar(300), c3 varchar(300))")
-    # 
-    #     v1 = 'ABCDEFGHIJ' * 30
-    #     v2 = '0123456789' * 30
-    #     v3 = '9876543210' * 30
-    # 
-    #     self.cnxn.execute("insert into t1(c1, c2, c3) values ($1,$2,$3)", v1, v2, v3);
-    #     row = self.cnxn.execute("select c1, c2, c3 from t1").fetchone()
-    # 
-    #     self.assertEqual(v1, row.c1)
-    #     self.assertEqual(v2, row.c2)
-    #     self.assertEqual(v3, row.c3)
-    # 
     # 
     # 
     # def test_small_decimal(self):
@@ -232,45 +324,12 @@ class PGTestCase(unittest.TestCase):
     #     self.assertEqual(v, value)
     # 
     # 
-    # def _exec(self):
-    #     self.cnxn.execute(self.sql)
-    #     
-    # def test_close_cnxn(self):
-    #     """Make sure using a Cursor after closing its connection doesn't crash."""
-    # 
-    #     self.cnxn.execute("create table t1(id integer, s varchar(20))")
-    #     self.cnxn.execute("insert into t1 values ($1,$2)", 1, 'test')
-    #     self.cnxn.execute("select * from t1")
-    # 
-    #     self.cnxn.close()
-    #     
-    #     # Now that the connection is closed, we expect an exception.  (If the code attempts to use
-    #     # the HSTMT, we'll get an access violation instead.)
-    #     self.sql = "select * from t1"
-    #     self.assertRaises(pglib.ProgrammingError, self._exec)
-    # 
-    # def test_empty_string(self):
-    #     self.cnxn.execute("create table t1(s varchar(20))")
-    #     self.cnxn.execute("insert into t1 values($1)", "")
-    # 
-    # def test_fixed_str(self):
-    #     value = "testing"
-    #     self.cnxn.execute("create table t1(s char(7))")
-    #     self.cnxn.execute("insert into t1 values($1)", "testing")
-    #     v = self.cnxn.execute("select * from t1").fetchone()[0]
-    #     self.assertEqual(type(v), str)
-    #     self.assertEqual(len(v), len(value)) # If we alloc'd wrong, the test below might work because of an embedded NULL
-    #     self.assertEqual(v, value)
-    # 
     # def test_negative_row_index(self):
     #     self.cnxn.execute("create table t1(s varchar(20))")
     #     self.cnxn.execute("insert into t1 values($1)", "1")
     #     row = self.cnxn.execute("select * from t1").fetchone()
     #     self.assertEquals(row[0], "1")
     #     self.assertEquals(row[-1], "1")
-    # 
-    # def test_version(self):
-    #     self.assertEquals(3, len(pglib.version.split('.'))) # 1.3.1 etc.
     # 
     # def test_rowcount_delete(self):
     #     self.assertEquals(self.cnxn.rowcount, -1)
@@ -293,14 +352,6 @@ class PGTestCase(unittest.TestCase):
     #     # This is a different code path internally.
     #     self.cnxn.execute("delete from t1")
     #     self.assertEquals(self.cnxn.rowcount, 0)
-    # 
-    # def test_rowcount_select(self):
-    #     self.cnxn.execute("create table t1(i int)")
-    #     count = 4
-    #     for i in range(count):
-    #         self.cnxn.execute("insert into t1 values ($1)", i)
-    #     self.cnxn.execute("select * from t1")
-    #     self.assertEquals(self.cnxn.rowcount, 4)
     # 
     # # PostgreSQL driver fails here?
     # # def test_rowcount_reset(self):
@@ -347,41 +398,6 @@ class PGTestCase(unittest.TestCase):
     #     self.assertEquals(self.cnxn.description, row.cursor_description)
     #     
     # 
-    # def test_executemany(self):
-    #     self.cnxn.execute("create table t1(a int, b varchar(10))")
-    # 
-    #     params = [ (i, str(i)) for i in range(1, 6) ]
-    # 
-    #     self.cnxn.executemany("insert into t1(a, b) values ($1,$2)", params)
-    # 
-    #     # REVIEW: Without the cast, we get the following error:
-    #     # [07006] [unixODBC]Received an unsupported type from Postgres.;\nERROR:  table "t2" does not exist (14)
-    # 
-    #     count = self.cnxn.execute("select cast(count(*) as int) from t1").fetchone()[0]
-    #     self.assertEqual(count, len(params))
-    # 
-    #     self.cnxn.execute("select a, b from t1 order by a")
-    #     rows = self.cnxn.fetchall()
-    #     self.assertEqual(count, len(rows))
-    # 
-    #     for param, row in zip(params, rows):
-    #         self.assertEqual(param[0], row[0])
-    #         self.assertEqual(param[1], row[1])
-    # 
-    # 
-    # def test_executemany_failure(self):
-    #     """
-    #     Ensure that an exception is raised if one query in an executemany fails.
-    #     """
-    #     self.cnxn.execute("create table t1(a int, b varchar(10))")
-    # 
-    #     params = [ (1, 'good'),
-    #                ('error', 'not an int'),
-    #                (3, 'good') ]
-    #     
-    #     self.failUnlessRaises(pglib.Error, self.cnxn.executemany, "insert into t1(a, b) value ($1, $2)", params)
-    # 
-    #     
     # def test_row_slicing(self):
     #     self.cnxn.execute("create table t1(a int, b int, c int, d int)");
     #     self.cnxn.execute("insert into t1 values(1,2,3,4)")

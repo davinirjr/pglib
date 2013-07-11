@@ -41,9 +41,11 @@ extern PyObject* Error;
 
 // From pg_type.h
 #define BOOLOID         16
+#define INT8OID			20
 #define INT2OID         21
 #define INT4OID         23
 #define TEXTOID         25
+#define BPCHAROID		1042
 #define VARCHAROID		1043
 #define NUMERICOID      1700
 

@@ -2,6 +2,7 @@
 #include "pglib.h"
 #include "connection.h"
 #include "resultset.h"
+#include "decimal.h"
 
 PyObject* pModule = 0;
 PyObject* Error;
@@ -108,6 +109,9 @@ static bool InitConstants()
 PyMODINIT_FUNC PyInit_pglib()
 {
     if (PyType_Ready(&ConnectionType) < 0 || PyType_Ready(&ResultSetType) < 0)
+        return 0;
+
+    if (!Decimal_Init())
         return 0;
 
     if (!InitConstants())

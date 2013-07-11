@@ -47,6 +47,24 @@ static PyObject* ResultSet_iternext(PyObject* self)
     return Row_New(rset, rset->cFetched++);
 }
 
+static Py_ssize_t ResultSet_length(PyObject* self)
+{
+    ResultSet* rset = (ResultSet*)self;
+    return rset->cRows;
+}
+
+static PyObject* ResultSet_item(PyObject* self, Py_ssize_t i)
+{
+    // Apparently, negative indexes are handled by magic ;) -- they never make it here.
+
+    ResultSet* rset = (ResultSet*)self;
+
+    if (i < 0 || i >= rset->cRows)
+        return PyErr_Format(PyExc_IndexError, "Index %d out of range.  ResultSet has %d rows", (int)i, (int)rset->cRows);
+
+    return Row_New(rset, i);
+}
+
 /*
 static PyObject* ResultSet_getcolumns(ResultSet* self, void* closure)
 {
@@ -67,6 +85,18 @@ static PyMemberDef ResultSet_members[] =
 };
 */
 
+static PySequenceMethods rset_as_sequence =
+{
+    ResultSet_length,           // sq_length
+    0,                          // sq_concat
+    0,                          // sq_repeat
+    ResultSet_item,             // sq_item
+    0,                          // was_sq_slice
+    0,                          // sq_ass_item
+    0,                          // sq_ass_slice
+    0,                          // sq_contains
+};
+
 PyTypeObject ResultSetType =
 {
     PyVarObject_HEAD_INIT(0, 0)
@@ -80,7 +110,7 @@ PyTypeObject ResultSetType =
     0,                          // tp_compare
     0,                          // tp_repr
     0,                          // tp_as_number
-    0,                          // tp_as_sequence
+    &rset_as_sequence,          // tp_as_sequence
     0,                          // tp_as_mapping
     0,                          // tp_hash
     0,                          // tp_call
