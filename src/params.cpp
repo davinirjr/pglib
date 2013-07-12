@@ -2,6 +2,7 @@
 #include "pglib.h"
 #include "connection.h"
 #include "params.h"
+#include "decimal.h"
 
 struct Pool
 {
@@ -13,18 +14,17 @@ struct Pool
 
 void Dump(Params& params)
 {
-    // printf("===============\n");
-    // printf("pools\n");
+    printf("===============\n");
+    printf("pools\n");
     int count = 0;
     Pool* p = (Pool*)params.pool;
     while (p != 0)
     {
         count += 1;
-        // printf(" [ 0x%p total=%d remaining=%d ]\n", p, (int)p->total, (int)p->remaining);
-        // // printf(" [ 0x%p total=%d remaining=%d ]\n", p, (int)p->total, (int)p->remaining);
+        printf(" [ 0x%p total=%d remaining=%d ]\n", p, (int)p->total, (int)p->remaining);
         p = p->next;
     }
-    // printf("---------------\n");
+    printf("---------------\n");
 }
 
 Params::Params(int _count)
@@ -36,6 +36,13 @@ Params::Params(int _count)
     values  = (char**)malloc(count * sizeof(char*));
     lengths = (int*)  malloc(count * sizeof(int));
     formats = (int*)  malloc(count * sizeof(int));
+
+    /*
+    printf("types  : %p\n", types    ); 
+    printf("values : %p\n", values   ); 
+    printf("lengths: %p\n", lengths  ); 
+    printf("formats: %p\n", formats  );
+    */
 
     pool = 0;
 }
@@ -135,6 +142,30 @@ bool BindUnicode(Connection* cnxn, Params& params, PyObject* param)
     return params.Bind(TEXTOID, (char*)p, cb, 0);
 }
 
+bool BindDecimal(Connection* cnxn, Params& params, PyObject* param)
+{
+    // TODO: How are we going to deal with NaN, etc.?
+
+    // This is probably wasteful, but most decimals are probably small as strings and near the size of the binary
+    // format.
+    //
+    // We are going to allocate as UTF8 but we fully expect the results to be ASCII.
+    
+    Object s(PyObject_Str(param));
+    if (!s)
+        return false;
+
+    Py_ssize_t cch;
+    const char* pch = PyUnicode_AsUTF8AndSize(s, &cch);
+    char* p = Allocate(params, cch + 1);
+    if (p == 0)
+        return 0;
+
+    strcpy(p, pch);
+
+    return params.Bind(NUMERICOID, (char*)p, cch + 1, 0);
+}
+
 bool BindLong(Connection* cnxn, Params& params, PyObject* param)
 {
     // Note: Integers must be in network order.
@@ -217,7 +248,7 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
     for (int i = 0, c = PyTuple_GET_SIZE(args)-1; i < c; i++)
     {
         // printf("parameter %d\n", i+1);
-        Dump(params);
+        // Dump(params);
 
         PyObject* param = PyTuple_GET_ITEM(args, i+1);
         if (param == Py_None)
@@ -242,6 +273,11 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
             if (!BindBool(cnxn, params, param))
                 return false;
         }
+        else if (PyDecimal_Check(param))
+        {
+            if (!BindDecimal(cnxn, params, param))
+                return false;
+        }
         
         /*
     if (PyBytes_Check(param))
@@ -262,9 +298,6 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
     if (PyFloat_Check(param))
         return GetFloatInfo(cur, index, param, info);
 
-    if (PyDecimal_Check(param))
-        return GetDecimalInfo(cur, index, param, info);
-
 #if PY_VERSION_HEX >= 0x02060000
     if (PyByteArray_Check(param))
         return GetByteArrayInfo(cur, index, param, info);
@@ -272,13 +305,12 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
          */
         else
         {
-            PyErr_Format(Error, "Unable to bind parameter %d: unhandled object type %s", (i+1), param->ob_type->tp_name);
+            PyErr_Format(Error, "Unable to bind parameter %d: unhandled object type %R", (i+1), param);
             return false;
         }
     }
 
-    // printf("after\n");
-    Dump(params);
+    // Dump(params);
 
     return true;
 }

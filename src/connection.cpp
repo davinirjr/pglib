@@ -21,6 +21,10 @@ static const char* EXEC_STATUS_TEXT[] =
 };
 
 
+static void notice_receiver(void *arg, const PGresult* res)
+{
+}
+
 PyObject* Connection_New(const char* conninfo)
 {
     PGconn* pgconn;
@@ -39,6 +43,8 @@ PyObject* Connection_New(const char* conninfo)
         Py_END_ALLOW_THREADS
         return 0;
     }
+
+    PQsetNoticeReceiver(pgconn, notice_receiver, 0);
 
     Connection* cnxn = PyObject_NEW(Connection, &ConnectionType);
     if (cnxn == 0)
@@ -113,7 +119,9 @@ static PGresult* internal_execute(PyObject* self, PyObject* args)
 static PyObject* Connection_execute(PyObject* self, PyObject* args)
 {
     PGresult* result = internal_execute(self, args);
-
+    if (result == 0)
+        return 0;
+    
     ExecStatusType status = PQresultStatus(result);
 
     // printf("status: %s\n", EXEC_STATUS_TEXT[status]);

@@ -2,7 +2,9 @@
 #include "pglib.h"
 #include "decimal.h"
 
-static PyObject* decimal_type;
+PyObject* decimal_type;
+
+static PyObject* NaN;
 
 bool Decimal_Init()
 {
@@ -17,9 +19,19 @@ bool Decimal_Init()
     Py_DECREF(decimalmod);
 
     if (decimal_type == 0)
+    {
         PyErr_SetString(PyExc_RuntimeError, "Unable to import decimal.Decimal.");
+        return false;
+    }
+    
+    NaN = PyObject_CallFunction(decimal_type, (char*)"s", "NaN");
+    if (NaN == 0)
+    {
+        Py_DECREF(decimal_type);
+        return 0;
+    }
 
-    return decimal_type != 0;
+    return true;
 }
 
 PyObject* Decimal_FromASCII(const char* sz)
@@ -29,4 +41,10 @@ PyObject* Decimal_FromASCII(const char* sz)
         return 0;
 
     return PyObject_CallFunction(decimal_type, (char*)"O", str.Get());
+}
+
+PyObject* Decimal_NaN()
+{
+    Py_INCREF(NaN);
+    return NaN;
 }

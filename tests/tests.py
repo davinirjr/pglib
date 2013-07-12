@@ -238,16 +238,21 @@ class PGTestCase(unittest.TestCase):
             self.assertEqual(result, value)
 
     def test_decimal(self):
-        from decimal import Decimal
-
         self.cnxn.execute("create table t1(a decimal(100,7))")
-        for s in ['-3.0000000']: # ['123456.7890']:
+        for s in ['-3.0000000', '123456.7890']:
             value = Decimal(s)
             self.cnxn.execute("delete from t1")
-            self.cnxn.execute("insert into t1 values($1::decimal(100,4))", s)
-
+            self.cnxn.execute("insert into t1 values($1::decimal(100,4))", value)
             result = self.cnxn.scalar("select a from t1")
             self.assertEqual(result, value)
+
+    def test_decimal_nan(self):
+        dec = Decimal('NaN')
+        self.cnxn.execute("create table t1(a decimal(100,7))")
+        self.cnxn.execute("insert into t1 values($1)", dec)
+        result = self.cnxn.scalar("select a from t1")
+        self.assertEqual(type(result), Decimal)
+        self.assert_(result.is_nan())
 
     #
     # varchar

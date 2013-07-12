@@ -46,17 +46,24 @@ static PyObject* NumericToDecimal(const char* p, int len)
     // Converts a PostgreSQL numeric column to a Python decimal.Decimal object.
 
     int16_t* pi = (int16_t*)p;
+
     int16_t ndigits = signed_ntohs(pi[0]);
     int16_t weight  = signed_ntohs(pi[1]);
     int16_t sign    = signed_ntohs(pi[2]);
     int16_t dscale  = signed_ntohs(pi[3]);
-
     const char* digits = &p[8];
 
-    // printf("ndigits = %d\n", ndigits);
-    // printf("weight  = %d\n", weight );
-    // printf("sign    = %d\n", sign   );
-    // printf("dscale  = %d\n", dscale );
+    /*
+    printf("ndigits = %d\n", ndigits);
+    printf("weight  = %d\n", weight );
+    printf("sign    = %d\n", sign   );
+    printf("dscale  = %d\n", dscale );
+    */
+
+    if (sign == -16384)
+    {
+        return Decimal_NaN();
+    }
 
     // Calculate the string length.  Each 16-bit "digit" represents 4 digits.
     
