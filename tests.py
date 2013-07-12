@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-import sys, os, re
+import sys, os, re, platform
+from os.path import join, dirname, abspath, basename
 import unittest
 from decimal import Decimal
 from datetime import date, time, datetime, timedelta
-from testutils import *
+# from testutils import *
 from argparse import ArgumentParser, ArgumentTypeError
 
 _TESTSTR = '0123456789-abcdefghijklmnopqrstuvwxyz-'
@@ -353,6 +354,40 @@ def main():
 
     testRunner = unittest.TextTestRunner(verbosity=args.verbose)
     result = testRunner.run(s)
+
+
+def add_to_path():
+    """
+    Prepends the build directory to the path so that newly built pglib libraries are used, allowing it to be tested
+    without installing it.
+    """
+    # Put the build directory into the Python path so we pick up the version we just built.
+    #
+    # To make this cross platform, we'll search the directories until we find the .pyd file.
+
+    import imp
+
+    library_exts  = [ t[0] for t in imp.get_suffixes() if t[-1] == imp.C_EXTENSION ]
+    library_names = [ 'pglib%s' % ext for ext in library_exts ]
+
+    # Only go into directories that match our version number. 
+
+    dir_suffix = '-%s.%s' % (sys.version_info[0], sys.version_info[1])
+
+    build = join(dirname(abspath(__file__)), 'build')
+
+    for root, dirs, files in os.walk(build):
+        for d in dirs[:]:
+            if not d.endswith(dir_suffix):
+                dirs.remove(d)
+
+        for name in library_names:
+            if name in files:
+                sys.path.insert(0, root)
+                return
+                
+    print('Did not find the pglib library in the build directory.  Will use an installed version.')
+
 
 if __name__ == '__main__':
 
