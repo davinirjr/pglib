@@ -17,6 +17,7 @@ extern "C"
 #include <boolobject.h>
 #include <unicodeobject.h>
 #include <structmember.h>
+#include <datetime.h>
 
 #include <sql.h>
 #include <sqlext.h>
@@ -40,14 +41,17 @@ inline void UNUSED(...) { }
 extern PyObject* Error;
 
 // From pg_type.h
-#define BOOLOID         16
-#define INT8OID			20
-#define INT2OID         21
-#define INT4OID         23
-#define TEXTOID         25
-#define BPCHAROID		1042
-#define VARCHAROID		1043
-#define NUMERICOID      1700
+#define BOOLOID    16
+#define INT8OID	   20
+#define INT2OID    21
+#define INT4OID    23
+#define TEXTOID    25
+#define CASHOID    790
+#define BPCHAROID  1042
+#define VARCHAROID 1043
+#define DATEOID	   1082
+#define TIMEOID	   1083
+#define NUMERICOID 1700
 
 
 // -----------------------------------------------------------------------------------------------

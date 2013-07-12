@@ -5,10 +5,17 @@
 #include "row.h"
 #include "byteswap.h"
 #include "decimal.h"
+#include "datatypes.h"
 
 #define NBASE       10000
 #define HALF_NBASE  5000
 #define DEC_DIGITS  4           /* decimal digits per NBASE digit */
+
+bool GetData_init()
+{
+    PyDateTime_IMPORT;
+    return true;
+}
 
 struct TempBuffer
 {
@@ -40,8 +47,34 @@ struct TempBuffer
     }
 };
 
+static PyObject* DecimalFromBinaryString(const char* p)
+{
+    return Decimal_FromASCII(p);
+}
 
-static PyObject* NumericToDecimal(const char* p, int len)
+static PyObject* DecimalFromCash(const char* p)
+{
+    // Apparently a 64-bit integer * 100.
+    //
+    // Using 'long long' is not portable though.  It isn't always the same as uint64_t.  Works on OS/X so I'll keep it
+    // until I get a Windows tests up.
+
+    long long n = signed_ntohll(*(long long*)p);
+
+    // Use 03 to ensure we have "x.yz".  We use a buffer big enough that we know we can insert a '.'.
+    char sz[30];
+    sprintf(sz, "%03lld", n);
+
+    size_t cch = strlen(sz);
+    sz[cch+1] = sz[cch];
+    sz[cch]   = sz[cch-1];
+    sz[cch-1] = sz[cch-2];
+    sz[cch-2] = '.';
+
+    return Decimal_FromASCII(sz);
+}
+
+static PyObject* DecimalFromBinaryNumeric(const char* p, int len)
 {
     // Converts a PostgreSQL numeric column to a Python decimal.Decimal object.
 
@@ -215,8 +248,14 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol)
 
     case NUMERICOID:
         if (format == 0)
-            return PyLong_FromString((char*)p, 0, 10);
-        return NumericToDecimal(p, PQgetlength(result, iRow, iCol));
+            return DecimalFromBinaryString(p);
+        return DecimalFromBinaryNumeric(p, PQgetlength(result, iRow, iCol));
+
+    case CASHOID:
+        return DecimalFromCash(p);
+
+    case DATEOID:
+        return GetDate(p);
 
     case TEXTOID:
     case BPCHAROID:
@@ -226,5 +265,3 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol)
 
     return PyErr_Format(Error, "ConvertValue: Unhandled OID %d\n", (int)oid);
 }
-
-

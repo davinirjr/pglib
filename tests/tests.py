@@ -3,8 +3,9 @@
 import sys, os, re
 import unittest
 from decimal import Decimal
+from datetime import date, time, datetime, timedelta
 from testutils import *
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 
 _TESTSTR = '0123456789-abcdefghijklmnopqrstuvwxyz-'
 
@@ -242,9 +243,20 @@ class PGTestCase(unittest.TestCase):
         for s in ['-3.0000000', '123456.7890']:
             value = Decimal(s)
             self.cnxn.execute("delete from t1")
-            self.cnxn.execute("insert into t1 values($1::decimal(100,4))", value)
+            self.cnxn.execute("insert into t1 values($1)", value)
             result = self.cnxn.scalar("select a from t1")
             self.assertEqual(result, value)
+
+
+    def test_money(self):
+        self.cnxn.execute("create table t1(a money)")
+        for s in ['1.23', '0.0', '123.45']:
+            value = Decimal(s)
+            self.cnxn.execute("delete from t1")
+            self.cnxn.execute("insert into t1 values($1)", value)
+            result = self.cnxn.scalar("select a from t1")
+            self.assertEqual(result, value)
+
 
     def test_decimal_nan(self):
         dec = Decimal('NaN')
@@ -286,159 +298,22 @@ class PGTestCase(unittest.TestCase):
     for value in [v for v in STR_FENCEPOSTS if len(v) > 0]:
         locals()['test_char_%s' % len(value)] = _maketest(value)
 
-    # def test_columns(self):
-    #     rset = self.cnxn.execute("select 1 a, 2 b")
-    #     self.assertEqual(rset.columns, ("a", "b"))
-    # 
-    # def test_negative_float(self):
-    #     value = -200
-    #     self.cnxn.execute("create table t1(n float)")
-    #     self.cnxn.execute("insert into t1 values ($1)", value)
-    #     result  = self.cnxn.execute("select n from t1").fetchone()[0]
-    #     self.assertEqual(value, result)
-    # 
-    # 
-    # def test_small_decimal(self):
-    #     # value = Decimal('1234567890987654321')
-    #     value = Decimal('100010')       # (I use this because the ODBC docs tell us how the bytes should look in the C struct)
-    #     self.cnxn.execute("create table t1(d numeric(19))")
-    #     self.cnxn.execute("insert into t1 values($1)", value)
-    #     v = self.cnxn.execute("select * from t1").fetchone()[0]
-    #     self.assertEqual(type(v), Decimal)
-    #     self.assertEqual(v, value)
-    # 
-    # 
-    # def test_small_decimal_scale(self):
-    #     # The same as small_decimal, except with a different scale.  This value exactly matches the ODBC documentation
-    #     # example in the C Data Types appendix.
-    #     value = '1000.10'
-    #     value = Decimal(value)
-    #     self.cnxn.execute("create table t1(d numeric(20,6))")
-    #     self.cnxn.execute("insert into t1 values($1)", value)
-    #     v = self.cnxn.execute("select * from t1").fetchone()[0]
-    #     self.assertEqual(type(v), Decimal)
-    #     self.assertEqual(v, value)
-    # 
-    # 
-    # def test_negative_decimal_scale(self):
-    #     value = Decimal('-10.0010')
-    #     self.cnxn.execute("create table t1(d numeric(19,4))")
-    #     self.cnxn.execute("insert into t1 values($1)", value)
-    #     v = self.cnxn.execute("select * from t1").fetchone()[0]
-    #     self.assertEqual(type(v), Decimal)
-    #     self.assertEqual(v, value)
-    # 
-    # 
-    # def test_negative_row_index(self):
-    #     self.cnxn.execute("create table t1(s varchar(20))")
-    #     self.cnxn.execute("insert into t1 values($1)", "1")
-    #     row = self.cnxn.execute("select * from t1").fetchone()
-    #     self.assertEquals(row[0], "1")
-    #     self.assertEquals(row[-1], "1")
-    # 
-    # def test_rowcount_delete(self):
-    #     self.assertEquals(self.cnxn.rowcount, -1)
-    #     self.cnxn.execute("create table t1(i int)")
-    #     count = 4
-    #     for i in range(count):
-    #         self.cnxn.execute("insert into t1 values ($1)", i)
-    #     self.cnxn.execute("delete from t1")
-    #     self.assertEquals(self.cnxn.rowcount, count)
-    # 
-    # def test_rowcount_nodata(self):
-    #     """
-    #     This represents a different code path than a delete that deleted something.
-    # 
-    #     The return value is SQL_NO_DATA and code after it was causing an error.  We could use SQL_NO_DATA to step over
-    #     the code that errors out and drop down to the same SQLRowCount code.  On the other hand, we could hardcode a
-    #     zero return value.
-    #     """
-    #     self.cnxn.execute("create table t1(i int)")
-    #     # This is a different code path internally.
-    #     self.cnxn.execute("delete from t1")
-    #     self.assertEquals(self.cnxn.rowcount, 0)
-    # 
-    # # PostgreSQL driver fails here?
-    # # def test_rowcount_reset(self):
-    # #     "Ensure rowcount is reset to -1"
-    # # 
-    # #     self.cnxn.execute("create table t1(i int)")
-    # #     count = 4
-    # #     for i in range(count):
-    # #         self.cnxn.execute("insert into t1 values ($1)", i)
-    # #     self.assertEquals(self.cnxn.rowcount, 1)
-    # # 
-    # #     self.cnxn.execute("create table t2(i int)")
-    # #     self.assertEquals(self.cnxn.rowcount, -1)
-    # 
-    # def test_lower_case(self):
-    #     "Ensure pglib.lowercase forces returned column names to lowercase."
-    # 
-    #     # Has to be set before creating the cursor, so we must recreate self.cnxn.
-    # 
-    #     pglib.lowercase = True
-    #     self.cnxn = self.cnxn.cursor()
-    # 
-    #     self.cnxn.execute("create table t1(Abc int, dEf int)")
-    #     self.cnxn.execute("select * from t1")
-    # 
-    #     names = [ t[0] for t in self.cnxn.description ]
-    #     names.sort()
-    # 
-    #     self.assertEquals(names, [ "abc", "def" ])
-    # 
-    #     # Put it back so other tests don't fail.
-    #     pglib.lowercase = False
-    #     
-    # def test_row_description(self):
-    #     """
-    #     Ensure Cursor.description is accessible as Row.cursor_description.
-    #     """
-    #     self.cnxn = self.cnxn.cursor()
-    #     self.cnxn.execute("create table t1(a int, b char(3))")
-    #     self.cnxn.commit()
-    #     self.cnxn.execute("insert into t1 values(1, 'abc')")
-    # 
-    #     row = self.cnxn.execute("select * from t1").fetchone()
-    #     self.assertEquals(self.cnxn.description, row.cursor_description)
-    #     
-    # 
-    # def test_row_slicing(self):
-    #     self.cnxn.execute("create table t1(a int, b int, c int, d int)");
-    #     self.cnxn.execute("insert into t1 values(1,2,3,4)")
-    # 
-    #     row = self.cnxn.execute("select * from t1").fetchone()
-    # 
-    #     result = row[:]
-    #     self.failUnless(result is row)
-    # 
-    #     result = row[:-1]
-    #     self.assertEqual(result, (1,2,3))
-    # 
-    #     result = row[0:4]
-    #     self.failUnless(result is row)
-    # 
-    # 
-    # def test_row_repr(self):
-    #     self.cnxn.execute("create table t1(a int, b int, c int, d int)");
-    #     self.cnxn.execute("insert into t1 values(1,2,3,4)")
-    # 
-    #     row = self.cnxn.execute("select * from t1").fetchone()
-    # 
-    #     result = str(row)
-    #     self.assertEqual(result, "(1, 2, 3, 4)")
-    # 
-    #     result = str(row[:-1])
-    #     self.assertEqual(result, "(1, 2, 3)")
-    # 
-    #     result = str(row[:1])
-    #     self.assertEqual(result, "(1,)")
+    #
+    # date
+    #
+
+    def test_date(self):
+        self.cnxn.execute("create table t1(a date)")
+        value = date(2001, 2, 3)
+        self.cnxn.execute("insert into t1 values ($1)", value)
+        result = self.cnxn.scalar("select a from t1")
+        self.assertEqual(result, value)
 
 
 def _check_conninfo(value):
     value = value.strip()
     if not re.match(r'^\w+=\w+$', value):
-        raise argparse.ArgumentTypeError('conninfo must be key=value ("{}")'.format(value))
+        raise ArgumentTypeError('conninfo must be key=value ("{}")'.format(value))
     return value
 
 def main():

@@ -2,6 +2,10 @@
 #ifndef PARAMS_H
 #define PARAMS_H
 
+void Params_Init();
+
+struct Pool;
+
 struct Params
 {
     Oid*   types;
@@ -12,7 +16,7 @@ struct Params
     int count; // How many are we going to bind?
     int bound; // How many have we bound?
 
-    void* pool;
+    Pool* pool;
 
     Params(int count);
     ~Params();
@@ -21,6 +25,8 @@ struct Params
     {
         return types && values && lengths && formats;
     }
+
+    char* Allocate(size_t cbNeeded);
 
     bool Bind(Oid type, char* value, int length, int format);
 };

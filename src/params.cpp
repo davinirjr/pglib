@@ -3,6 +3,12 @@
 #include "connection.h"
 #include "params.h"
 #include "decimal.h"
+#include "datatypes.h"
+
+void Params_Init()
+{
+    PyDateTime_IMPORT;
+};
 
 struct Pool
 {
@@ -37,13 +43,6 @@ Params::Params(int _count)
     lengths = (int*)  malloc(count * sizeof(int));
     formats = (int*)  malloc(count * sizeof(int));
 
-    /*
-    printf("types  : %p\n", types    ); 
-    printf("values : %p\n", values   ); 
-    printf("lengths: %p\n", lengths  ); 
-    printf("formats: %p\n", formats  );
-    */
-
     pool = 0;
 }
 
@@ -54,7 +53,7 @@ Params::~Params()
     free(lengths);
     free(formats);
 
-    Pool* p = reinterpret_cast<Pool*>(pool);
+    Pool* p = pool;
     while (p)
     {
         Pool* tmp = p->next;
@@ -75,33 +74,26 @@ bool Params::Bind(Oid type, char* value, int length, int format)
     return true;
 }
 
-char* Allocate(Params& params, size_t amount)
+char* Params::Allocate(size_t amount)
 {
-    Pool** pp = reinterpret_cast<Pool**>(&params.pool);
-
-    // printf("pool: %p\n", params.pool);
-    // printf("pp:   %p\n", pp);
-    // printf("*pp:  %p\n", *pp);
-
     // See if we have a pool that is large enough.
+
+    Pool** pp = &pool;
 
     while (*pp != 0)
     {
         if ((*pp)->remaining >= amount)
             break;
+
+        pp = &((*pp)->next);
     }
 
     // If we didn't find a large enough pool, make one and link it in.
     
     if (*pp == 0)
     {
-        /*
-        // Now decide on the size.  Let's round the request up to the nearest 2K.
-        const size_t multiple = 1024 * 2;
-        size_t total = ((amount-1) / multiple) * multiple;
-        */
         size_t total = amount + 1024;
-        *pp = reinterpret_cast<Pool*>(malloc(total));
+        *pp = (Pool*)malloc(total);
 
         if (*pp == 0)
         {
@@ -118,6 +110,7 @@ char* Allocate(Params& params, size_t amount)
     size_t offset = (*pp)->total - (*pp)->remaining;
     char*  p      = &(*pp)->buffer[offset];
     (*pp)->remaining -= amount;
+
     return p;
 }
 
@@ -157,7 +150,7 @@ bool BindDecimal(Connection* cnxn, Params& params, PyObject* param)
 
     Py_ssize_t cch;
     const char* pch = PyUnicode_AsUTF8AndSize(s, &cch);
-    char* p = Allocate(params, cch + 1);
+    char* p = params.Allocate(cch + 1);
     if (p == 0)
         return 0;
 
@@ -165,6 +158,7 @@ bool BindDecimal(Connection* cnxn, Params& params, PyObject* param)
 
     return params.Bind(NUMERICOID, (char*)p, cch + 1, 0);
 }
+
 
 bool BindLong(Connection* cnxn, Params& params, PyObject* param)
 {
@@ -187,7 +181,7 @@ bool BindLong(Connection* cnxn, Params& params, PyObject* param)
     {
         if (MIN_SMALLINT <= lvalue && lvalue <= MAX_SMALLINT)
         {
-            int16_t* p = reinterpret_cast<int16_t*>(Allocate(params, 2));
+            int16_t* p = reinterpret_cast<int16_t*>(params.Allocate(2));
             if (p == 0)
                 return false;
             *p = htons(lvalue);
@@ -196,7 +190,7 @@ bool BindLong(Connection* cnxn, Params& params, PyObject* param)
 
         if (MIN_INTEGER <= lvalue && lvalue <= MAX_INTEGER)
         {
-            int32_t* p = reinterpret_cast<int32_t*>(Allocate(params, 4));
+            int32_t* p = reinterpret_cast<int32_t*>(params.Allocate(4));
             if (p == 0)
                 return false;
             *p = htonl(lvalue);
@@ -227,7 +221,7 @@ bool BindLong(Connection* cnxn, Params& params, PyObject* param)
         return false;
     Py_ssize_t cb = 0;
     const char* sz = PyUnicode_AsUTF8AndSize(str, &cb);
-    char* pch = Allocate(params, cb + 1);
+    char* pch = params.Allocate(cb + 1);
     if (!pch)
         return 0;
     memcpy(pch, sz, cb+1);
@@ -278,7 +272,12 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
             if (!BindDecimal(cnxn, params, param))
                 return false;
         }
-        
+        else if (PyDate_Check(param))
+        {
+            if (!BindDate(cnxn, params, param))
+                return false;
+        }
+
         /*
     if (PyBytes_Check(param))
         return GetBytesInfo(cur, index, param, info);

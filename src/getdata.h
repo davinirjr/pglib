@@ -6,4 +6,6 @@ struct Row;
 
 PyObject* ConvertValue(PGresult* result, int iRow, int iCol);
 
+bool GetData_init();
+
 #endif // GETDATA_H

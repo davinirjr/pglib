@@ -3,6 +3,9 @@
 #include "connection.h"
 #include "resultset.h"
 #include "decimal.h"
+#include "getdata.h"
+#include "params.h"
+#include "datatypes.h"
 
 PyObject* pModule = 0;
 PyObject* Error;
@@ -113,6 +116,12 @@ PyMODINIT_FUNC PyInit_pglib()
 
     if (!Decimal_Init())
         return 0;
+
+    if (!GetData_init())
+        return 0;
+
+    Params_Init();
+    Datatypes_Init();
 
     if (!InitConstants())
         return 0;
