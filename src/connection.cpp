@@ -7,7 +7,7 @@
 #include "getdata.h"
 #include "row.h"
 
-static const char* EXEC_STATUS_TEXT[] = 
+static const char* EXEC_STATUS_TEXT[] =
 {
     "PGRES_EMPTY_QUERY",
     "PGRES_COMMAND_OK",
@@ -54,6 +54,7 @@ PyObject* Connection_New(const char* conninfo)
     }
 
     cnxn->pgconn = pgconn;
+    cnxn->integer_datetimes = PQparameterStatus(pgconn, "integer_datetimes");
 
     return reinterpret_cast<PyObject*>(cnxn);
 }
@@ -61,7 +62,7 @@ PyObject* Connection_New(const char* conninfo)
 static PGresult* internal_execute(PyObject* self, PyObject* args)
 {
     Connection* cnxn = (Connection*)self;
-    
+
     // TODO: Check connection state.
 
     Py_ssize_t cParams = PyTuple_Size(args) - 1;
@@ -86,7 +87,7 @@ static PGresult* internal_execute(PyObject* self, PyObject* args)
         // result = PQexec(cnxn->pgconn, PyUnicode_AsUTF8(pSql));
 
         result = PQexecParams(cnxn->pgconn, PyUnicode_AsUTF8(pSql),
-                              0, 0, 0, 0, 0, 
+                              0, 0, 0, 0, 0,
                               1); // binary format
 
     }
@@ -104,7 +105,7 @@ static PGresult* internal_execute(PyObject* self, PyObject* args)
                               params.formats,
                               1); // binary format
     }
-    
+
     if (result == 0)
     {
         // Apparently this only happens for very serious errors, but the docs aren't terribly clear.
@@ -118,10 +119,12 @@ static PGresult* internal_execute(PyObject* self, PyObject* args)
 
 static PyObject* Connection_execute(PyObject* self, PyObject* args)
 {
+    Connection* cnxn = (Connection*)self;
+
     PGresult* result = internal_execute(self, args);
     if (result == 0)
         return 0;
-    
+
     ExecStatusType status = PQresultStatus(result);
 
     // printf("status: %s\n", EXEC_STATUS_TEXT[status]);
@@ -129,9 +132,9 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
     if (status == PGRES_TUPLES_OK)
     {
         // Result_New will take ownership of `result`.
-        return ResultSet_New(result);
+        return ResultSet_New(cnxn, result);
     }
-    
+
     if (status == PGRES_COMMAND_OK)
     {
         const char* sz = PQcmdTuples(result);
@@ -140,11 +143,11 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
 
         return PyLong_FromLong(atoi(sz));
     }
-    
+
     switch (status)
     {
-	case PGRES_COPY_OUT:
-	case PGRES_COPY_IN:
+    case PGRES_COPY_OUT:
+    case PGRES_COPY_IN:
     case PGRES_COPY_BOTH:
     case PGRES_NONFATAL_ERROR: // ?
         PQclear(result);
@@ -157,6 +160,8 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
 
 static PyObject* Connection_row(PyObject* self, PyObject* args)
 {
+    Connection* cnxn = (Connection*)self;
+
     ResultHolder result = internal_execute(self, args);
     if (result == 0)
         return 0;
@@ -180,8 +185,8 @@ static PyObject* Connection_row(PyObject* self, PyObject* args)
 
     if (cRows != 1)
         return PyErr_Format(Error, "row query returned %d rows, not 1", cRows);
-            
-    Object rset = ResultSet_New(result);
+
+    Object rset = ResultSet_New(cnxn, result);
     if (rset == 0)
         return 0;
 
@@ -193,6 +198,8 @@ static PyObject* Connection_row(PyObject* self, PyObject* args)
 
 static PyObject* Connection_scalar(PyObject* self, PyObject* args)
 {
+    Connection* cnxn = (Connection*)self;
+
     ResultHolder result = internal_execute(self, args);
     if (result == 0)
         return 0;
@@ -213,11 +220,11 @@ static PyObject* Connection_scalar(PyObject* self, PyObject* args)
     {
         Py_RETURN_NONE;
     }
-            
+
     if (cRows != 1)
         return PyErr_Format(Error, "scalar query returned %d rows, not 1", cRows);
 
-    return ConvertValue(result, 0, 0);
+    return ConvertValue(result, 0, 0, cnxn->integer_datetimes);
 }
 
 
@@ -231,7 +238,7 @@ static void Connection_dealloc(PyObject* self)
         PQfinish(cnxn->pgconn);
         Py_END_ALLOW_THREADS
     }
-    
+
     PyObject_Del(self);
 }
 

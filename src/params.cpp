@@ -3,7 +3,27 @@
 #include "connection.h"
 #include "params.h"
 #include "decimal.h"
-#include "datatypes.h"
+#include "juliandate.h"
+#include "byteswap.h"
+
+static bool BindBool(Connection* cnxn, Params& params, PyObject* param);
+static bool BindDate(Connection* cnxn, Params& params, PyObject* param);
+static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param);
+
+static void DumpBytes(const char* p, int len)
+{
+    printf("len=%d\n", len);
+    for (int i = 0; i < len; i++)
+    {
+        if (i > 0 && (i % 4) == 0)
+            printf(" ");
+
+        if (i > 0 && (i % 10) == 0)
+            printf("\n");
+        printf("%02x", *(unsigned char*)&p[i]);
+    }
+    printf("\n");
+}
 
 void Params_Init()
 {
@@ -112,15 +132,6 @@ char* Params::Allocate(size_t amount)
     (*pp)->remaining -= amount;
 
     return p;
-}
-
-static const char FALSEBYTE = 1;
-static const char TRUEBYTE = 1;
-
-bool BindBool(Connection* cnxn, Params& params, PyObject* param)
-{
-    const char* p = (param == Py_True) ? &TRUEBYTE : &FALSEBYTE;
-    return params.Bind(BOOLOID, (char*)p, 1, 1);
 }
 
 bool BindUnicode(Connection* cnxn, Params& params, PyObject* param)
@@ -244,6 +255,8 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
         // printf("parameter %d\n", i+1);
         // Dump(params);
 
+        // Remember that a bool is a long, a datetime is a date, etc, so the order we check them in is important.
+
         PyObject* param = PyTuple_GET_ITEM(args, i+1);
         if (param == Py_None)
         {
@@ -251,6 +264,11 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
             params.values[i]  = 0;
             params.lengths[i] = 0;
             params.formats[i] = 0;
+        }
+        else if (PyBool_Check(param))
+        {
+            if (!BindBool(cnxn, params, param))
+                return false;
         }
         else if (PyLong_Check(param))
         {
@@ -262,14 +280,14 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
             if (!BindUnicode(cnxn, params, param))
                 return false;
         }
-        else if (PyBool_Check(param))
-        {
-            if (!BindBool(cnxn, params, param))
-                return false;
-        }
         else if (PyDecimal_Check(param))
         {
             if (!BindDecimal(cnxn, params, param))
+                return false;
+        }
+        else if (PyDateTime_Check(param))
+        {
+            if (!BindDateTime(cnxn, params, param))
                 return false;
         }
         else if (PyDate_Check(param))
@@ -277,13 +295,10 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
             if (!BindDate(cnxn, params, param))
                 return false;
         }
-
         /*
     if (PyBytes_Check(param))
         return GetBytesInfo(cur, index, param, info);
 
-    if (PyDateTime_Check(param))
-        return GetDateTimeInfo(cur, index, param, info);
 
     if (PyDate_Check(param))
         return GetDateInfo(cur, index, param, info);
@@ -311,5 +326,50 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
 
     // Dump(params);
 
+    return true;
+}
+
+static const char FALSEBYTE = 0;
+static const char TRUEBYTE  = 1;
+
+static bool BindBool(Connection* cnxn, Params& params, PyObject* param)
+{
+    const char* p = (param == Py_True) ? &TRUEBYTE : &FALSEBYTE;
+    return params.Bind(BOOLOID, (char*)p, 1, 1);
+}
+
+static bool BindDate(Connection* cnxn, Params& params, PyObject* param)
+{
+    uint32_t julian = dateToJulian(PyDateTime_GET_YEAR(param), PyDateTime_GET_MONTH(param), PyDateTime_GET_DAY(param));
+    julian -= JULIAN_START;
+
+    uint32_t* p = (uint32_t*)params.Allocate(sizeof(julian));
+    if (p == 0)
+        return false;
+
+    *p = htonl(julian);
+    params.Bind(DATEOID, (char*)p, 4, 1);
+    return true;
+}
+
+static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param)
+{
+    uint64_t timestamp = dateToJulian(PyDateTime_GET_YEAR(param), PyDateTime_GET_MONTH(param), PyDateTime_GET_DAY(param)) - JULIAN_START;
+    timestamp *= 24;
+    timestamp += PyDateTime_DATE_GET_HOUR(param);
+    timestamp *= 60;
+    timestamp += PyDateTime_DATE_GET_MINUTE(param);
+    timestamp *= 60;
+    timestamp += PyDateTime_DATE_GET_SECOND(param);
+    timestamp *= 1000000;
+    timestamp += PyDateTime_DATE_GET_MICROSECOND(param);
+
+    uint64_t* p = (uint64_t*)params.Allocate(8);
+    if (p == 0)
+        return false;
+
+    *p = signed_ntohll(timestamp);
+
+    params.Bind(TIMESTAMPOID, (char*)p, 8, 1);
     return true;
 }

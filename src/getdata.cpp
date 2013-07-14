@@ -5,17 +5,70 @@
 #include "row.h"
 #include "byteswap.h"
 #include "decimal.h"
-#include "datatypes.h"
+#include "juliandate.h"
 
-#define NBASE       10000
-#define HALF_NBASE  5000
-#define DEC_DIGITS  4           /* decimal digits per NBASE digit */
+static void DumpBytes(const char* p, int len);
+
+static PyObject* GetCash(const char* p);
+static PyObject* GetDate(const char* p);
+static PyObject* GetNumeric(const char* p, int len);
+static PyObject* GetTimestamp(const char* p, int len, bool integer_datetimes);
 
 bool GetData_init()
 {
     PyDateTime_IMPORT;
     return true;
 }
+
+PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_datetimes)
+{
+    // Used to read a column from the database and return a Python object.
+
+    if (PQgetisnull(result, iRow, iCol))
+        Py_RETURN_NONE;
+
+    // int format = PQfformat(result, iCol);
+    Oid oid = PQftype(result, iCol);
+
+    // printf("ConvertValue: col=%d fmt=%d oid=%d\n", iCol, format, (int)oid);
+
+    const char* p = PQgetvalue(result, iRow, iCol);
+
+    switch (oid)
+    {
+    case TEXTOID:
+    case BPCHAROID:
+    case VARCHAROID:
+        return PyUnicode_DecodeUTF8((const char*)p, strlen((const char*)p), 0);
+
+    case INT2OID:
+        return PyLong_FromLong(signed_ntohs(*(int16_t*)p));
+
+    case INT4OID:
+        return PyLong_FromLong(signed_ntohl(*(long*)p));
+
+    case INT8OID:
+        return PyLong_FromLongLong(signed_ntohll(*(long long*)p));
+
+    case NUMERICOID:
+        return GetNumeric(p, PQgetlength(result, iRow, iCol));
+
+    case CASHOID:
+        return GetCash(p);
+
+    case DATEOID:
+        return GetDate(p);
+
+    case TIMESTAMPOID:
+        return GetTimestamp(p, PQgetlength(result, iRow, iCol), integer_datetimes);
+
+    case BOOLOID:
+        return PyBool_FromLong(*p);
+    }
+
+    return PyErr_Format(Error, "ConvertValue: Unhandled OID %d\n", (int)oid);
+}
+
 
 struct TempBuffer
 {
@@ -47,12 +100,8 @@ struct TempBuffer
     }
 };
 
-static PyObject* DecimalFromBinaryString(const char* p)
-{
-    return Decimal_FromASCII(p);
-}
 
-static PyObject* DecimalFromCash(const char* p)
+static PyObject* GetCash(const char* p)
 {
     // Apparently a 64-bit integer * 100.
     //
@@ -74,7 +123,8 @@ static PyObject* DecimalFromCash(const char* p)
     return Decimal_FromASCII(sz);
 }
 
-static PyObject* DecimalFromBinaryNumeric(const char* p, int len)
+
+static PyObject* GetNumeric(const char* p, int len)
 {
     // Converts a PostgreSQL numeric column to a Python decimal.Decimal object.
 
@@ -86,17 +136,8 @@ static PyObject* DecimalFromBinaryNumeric(const char* p, int len)
     int16_t dscale  = signed_ntohs(pi[3]);
     const char* digits = &p[8];
 
-    /*
-    printf("ndigits = %d\n", ndigits);
-    printf("weight  = %d\n", weight );
-    printf("sign    = %d\n", sign   );
-    printf("dscale  = %d\n", dscale );
-    */
-
     if (sign == -16384)
-    {
         return Decimal_NaN();
-    }
 
     // Calculate the string length.  Each 16-bit "digit" represents 4 digits.
     
@@ -204,6 +245,47 @@ static PyObject* DecimalFromBinaryNumeric(const char* p, int len)
     return Decimal_FromASCII(buffer.p);
 }
 
+static PyObject* GetDate(const char* p)
+{
+    uint32_t julian = ntohl(*(uint32_t*)p) + JULIAN_START;
+    int year, month, date;
+    julianToDate(julian, year, month, date);
+    return PyDate_FromDate(year, month, date);
+}
+
+
+static PyObject* GetTimestamp(const char* p, int len, bool integer_datetimes)
+{
+    int year, month, day, hour, minute, second, microsecond;
+
+    if (integer_datetimes)
+    {
+        // Number of milliseconds since the Postgres epoch.
+
+        uint64_t n = signed_ntohll(*(uint64_t*)p);
+
+        microsecond = n % 1000000;
+        n /= 1000000;
+        second = n % 60;
+        n /= 60;
+        minute = n % 60;
+        n /= 60;
+        hour = n % 24;
+        n /= 24;
+        int days = n;
+
+        julianToDate(days + JULIAN_START, year, month, day);
+    }
+    else
+    {
+        // 8-byte floating point
+        PyErr_SetString(Error, "Floating unhandled!\n");
+        return 0;
+    }
+
+    return PyDateTime_FromDateAndTime(year, month, day, hour, minute, second, microsecond);
+}
+
 static void DumpBytes(const char* p, int len)
 {
     printf("len=%d\n", len);
@@ -214,54 +296,4 @@ static void DumpBytes(const char* p, int len)
         printf("%02x", *(unsigned char*)&p[i]);
     }
     printf("\n");
-}
-
-
-PyObject* ConvertValue(PGresult* result, int iRow, int iCol)
-{
-    if (PQgetisnull(result, iRow, iCol))
-        Py_RETURN_NONE;
-
-    int format = PQfformat(result, iCol);
-    Oid oid = PQftype(result, iCol);
-
-    // printf("ConvertValue: col=%d fmt=%d oid=%d\n", iCol, format, (int)oid);
-
-    const char* p = PQgetvalue(result, iRow, iCol);
-
-    switch (oid)
-    {
-    case INT2OID:
-        if (format == 0)
-            return PyLong_FromString((char*)p, 0, 10);
-        return PyLong_FromLong(signed_ntohs(*(int16_t*)p));
-
-    case INT4OID:
-        if (format == 0)
-            return PyLong_FromString((char*)p, 0, 10);
-        return PyLong_FromLong(signed_ntohl(*(long*)p));
-
-    case INT8OID:
-        if (format == 0)
-            return PyLong_FromString((char*)p, 0, 10);
-        return PyLong_FromLongLong(signed_ntohll(*(long long*)p));
-
-    case NUMERICOID:
-        if (format == 0)
-            return DecimalFromBinaryString(p);
-        return DecimalFromBinaryNumeric(p, PQgetlength(result, iRow, iCol));
-
-    case CASHOID:
-        return DecimalFromCash(p);
-
-    case DATEOID:
-        return GetDate(p);
-
-    case TEXTOID:
-    case BPCHAROID:
-    case VARCHAROID:
-        return PyUnicode_DecodeUTF8((const char*)p, strlen((const char*)p), 0);
-    }
-
-    return PyErr_Format(Error, "ConvertValue: Unhandled OID %d\n", (int)oid);
 }

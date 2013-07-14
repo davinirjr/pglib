@@ -5,7 +5,6 @@
 #include "decimal.h"
 #include "getdata.h"
 #include "params.h"
-#include "datatypes.h"
 
 PyObject* pModule = 0;
 PyObject* Error;
@@ -121,7 +120,6 @@ PyMODINIT_FUNC PyInit_pglib()
         return 0;
 
     Params_Init();
-    Datatypes_Init();
 
     if (!InitConstants())
         return 0;

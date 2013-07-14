@@ -1,9 +1,10 @@
 
 #include "pglib.h"
 #include "resultset.h"
+#include "connection.h"
 #include "row.h"
 
-PyObject* ResultSet_New(PGresult* result)
+PyObject* ResultSet_New(Connection* cnxn, PGresult* result)
 {
     ResultSet* rset = PyObject_NEW(ResultSet, &ResultSetType);
     if (rset == 0)
@@ -12,10 +13,11 @@ PyObject* ResultSet_New(PGresult* result)
         return 0;
     }
 
-    rset->result   = result;
-    rset->cRows    = PQntuples(result);
-    rset->cCols    = PQnfields(result);
-    rset->cFetched = 0;
+    rset->result            = result;
+    rset->cRows             = PQntuples(result);
+    rset->cCols             = PQnfields(result);
+    rset->cFetched          = 0;
+    rset->integer_datetimes = cnxn->integer_datetimes;
 
     return reinterpret_cast<PyObject*>(rset);
 }

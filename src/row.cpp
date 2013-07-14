@@ -38,7 +38,7 @@ static PyObject* Row_getattro(PyObject* self, PyObject* name)
     if (iCol == -1)
         return PyObject_GenericGetAttr((PyObject*)row, name);
 
-    return ConvertValue(row->rset->result, row->iRow, iCol);
+    return ConvertValue(row->rset->result, row->iRow, iCol, row->rset->integer_datetimes);
 }
 
 static Py_ssize_t Row_length(PyObject* self)
@@ -78,7 +78,7 @@ static PyObject* Row_item(PyObject* self, Py_ssize_t i)
         return NULL;
     }
 
-    return ConvertValue(row->rset->result, row->iRow, i);
+    return ConvertValue(row->rset->result, row->iRow, i, row->rset->integer_datetimes);
 }
 
 /*

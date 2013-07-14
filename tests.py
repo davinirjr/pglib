@@ -204,6 +204,17 @@ class PGTestCase(unittest.TestCase):
             self.assertEqual(t, ('one', 1))
 
     #
+    # boolean
+    #
+
+    def test_boolean(self):
+        self.cnxn.execute("create table t1(a boolean)")
+        for value in [True, False]:
+            self.cnxn.execute("insert into t1 values($1)", value)
+            result = self.cnxn.scalar("select a from t1 where a=$1", value)
+            self.assertEqual(result, value)
+
+    #
     # numeric
     #
 
@@ -300,12 +311,19 @@ class PGTestCase(unittest.TestCase):
         locals()['test_char_%s' % len(value)] = _maketest(value)
 
     #
-    # date
+    # date / timestamp
     #
 
     def test_date(self):
         self.cnxn.execute("create table t1(a date)")
         value = date(2001, 2, 3)
+        self.cnxn.execute("insert into t1 values ($1)", value)
+        result = self.cnxn.scalar("select a from t1")
+        self.assertEqual(result, value)
+
+    def test_timestamp(self):
+        self.cnxn.execute("create table t1(a timestamp)")
+        value = datetime(2001, 2, 3, 4, 5, 6, 7)
         self.cnxn.execute("insert into t1 values ($1)", value)
         result = self.cnxn.scalar("select a from t1")
         self.assertEqual(result, value)

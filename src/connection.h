@@ -8,6 +8,7 @@ struct Connection
 {
     PyObject_HEAD
     PGconn* pgconn;
+    bool integer_datetimes;
 };
 
 PyObject* Connection_New(const char* conninfo);

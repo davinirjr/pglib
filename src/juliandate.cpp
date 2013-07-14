@@ -1,28 +1,15 @@
 
-#include "pglib.h"
-#include "connection.h"
-#include "params.h"
+#include "pglib.h"g
 
-void Datatypes_Init()
-{
-    PyDateTime_IMPORT;
-}
-
-
-
-//
-// date, datetime, etc.
-//
-
-// Dates are apparently 32-bit unsigned Julian dates, offset by 2001-01-01.
+// PostgreSQL stores data as 32-bit Julian dates, offset from 2001-01-01.
 
 enum
 {
-    JULIAN_START = 2451545, // 2000-01-01
+    JULIAN_START     = 2451545, // 2000-01-01
     GREGORIAN_OFFSET = 15 + 31*(10+12*1582)
 };
 
-static void julianToDate(int julian, int& year, int& month, int& day)
+void julianToDate(int julian, int& year, int& month, int& day)
 {
     // This is the standard conversion from some book that I forgot to record the name of.  However, this
     // implementation is from one of my Java projects, so we need to double-check the C.
@@ -51,7 +38,7 @@ static void julianToDate(int julian, int& year, int& month, int& day)
         year--;
 }
 
-static uint32_t dateToJulian(int year, int month, int day)
+uint32_t dateToJulian(int year, int month, int day)
 {
     int julianYear = year;
     if (year < 0)
@@ -77,27 +64,4 @@ static uint32_t dateToJulian(int year, int month, int day)
     }
 
     return (int)julian;
-}
-
-
-bool BindDate(Connection* cnxn, Params& params, PyObject* param)
-{
-    uint32_t julian = dateToJulian(PyDateTime_GET_YEAR(param), PyDateTime_GET_MONTH(param), PyDateTime_GET_DAY(param));
-    julian -= JULIAN_START;
-
-    uint32_t* p = (uint32_t*)params.Allocate(sizeof(julian));
-    if (p == 0)
-        return false;
-
-    *p = htonl(julian);
-    params.Bind(DATEOID, (char*)p, 4, 1);
-    return true;
-}
-
-PyObject* GetDate(const char* p)
-{
-    uint32_t julian = ntohl(*(uint32_t*)p) + JULIAN_START;
-    int year, month, date;
-    julianToDate(julian, year, month, date);
-    return PyDate_FromDate(year, month, date);
 }
