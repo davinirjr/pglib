@@ -368,7 +368,7 @@ static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param)
     if (p == 0)
         return false;
 
-    *p = signed_ntohll(timestamp);
+    *p = swapu8(timestamp);
 
     params.Bind(TIMESTAMPOID, (char*)p, 8, 1);
     return true;

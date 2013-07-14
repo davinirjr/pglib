@@ -2,39 +2,38 @@
 #ifndef BYTESWAP_H
 #define BYTESWAP_H
 
-// Remember, htons and htonl worked with *unsigned* integers.
-//
-// Not tested on 32-bit or big endian machines yet.
-
 #ifdef __BIG_ENDIAN__
-inline long signed_ntohs(int16_t value)
-{
-    return value;
-}
+
+#define swaps2
+#define swaps4
+#define swaps8
+#define swapu2
+#define swapu4
+#define swapu8
+
 #else
 
-// Watch out for sign extension.  If shifting the top bits to the right, if the sign bit is on it will be propogated.
-// The easy solution is to shift first, and then &.
-
-inline long signed_ntohs(int16_t value)
+inline uint16_t swapu2(uint16_t value)
 {
-    // Note: Don't remove the cast to int16_t
-    return (int16_t)(((value >> 8) & 0x00ff) | ((value & 0x00ff) << 8));
-}
-
-inline long signed_ntohl(int32_t value)
-{
-    return (int32_t)(
-    ((value & 0x000000FF) << 24) |
-    ((value & 0x0000FF00) <<  8) |
-    ((value & 0x00FF0000) >>  8) |
-    ((value >> 24) & 0x000000FF)
+    return (
+        ((value & 0x00FF) << 8) |
+        ((value & 0xFF00) >> 8)
     );
 }
 
-inline int64_t signed_ntohll(int64_t value)
+inline uint32_t swapu4(uint32_t value)
 {
-    return (int64_t)(
+    return (
+        ((value & 0x000000FF) << 24) |
+        ((value & 0x0000FF00) <<  8) |
+        ((value & 0x00FF0000) >>  8) |
+        ((value & 0xFF000000) >> 24)
+    );
+}
+
+inline uint64_t swapu8(uint64_t value)
+{
+    return (
         ((value & 0x00000000000000FFULL) << 56) | 
         ((value & 0x000000000000FF00ULL) << 40) | 
         ((value & 0x0000000000FF0000ULL) << 24) | 
@@ -42,8 +41,14 @@ inline int64_t signed_ntohll(int64_t value)
         ((value & 0x000000FF00000000ULL) >>  8) | 
         ((value & 0x0000FF0000000000ULL) >> 24) | 
         ((value & 0x00FF000000000000ULL) >> 40) | 
-        ((value >> 56) & 0x00000000000000FFULL));
+        ((value & 0xFF00000000000000ULL) >> 56)
+    );
 }
+
+inline int16_t swaps2(int16_t value) { return (int16_t)swapu2((uint16_t)value); }
+inline int32_t swaps4(int32_t value) { return (int32_t)swapu4((uint32_t)value); }
+inline int64_t swaps8(int64_t value) { return (int64_t)swapu8((uint64_t)value); }
+
 #endif
 
 #endif //  BYTESWAP_H

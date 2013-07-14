@@ -34,6 +34,7 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_dateti
 
     const char* p = PQgetvalue(result, iRow, iCol);
 
+
     switch (oid)
     {
     case TEXTOID:
@@ -42,13 +43,13 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_dateti
         return PyUnicode_DecodeUTF8((const char*)p, strlen((const char*)p), 0);
 
     case INT2OID:
-        return PyLong_FromLong(signed_ntohs(*(int16_t*)p));
+        return PyLong_FromLong(swaps2(*(int16_t*)p));
 
     case INT4OID:
-        return PyLong_FromLong(signed_ntohl(*(long*)p));
+        return PyLong_FromLong(swaps4(*(int32_t*)p));
 
     case INT8OID:
-        return PyLong_FromLongLong(signed_ntohll(*(long long*)p));
+        return PyLong_FromLongLong(swaps8(*(int64_t*)p));
 
     case NUMERICOID:
         return GetNumeric(p, PQgetlength(result, iRow, iCol));
@@ -104,11 +105,8 @@ struct TempBuffer
 static PyObject* GetCash(const char* p)
 {
     // Apparently a 64-bit integer * 100.
-    //
-    // Using 'long long' is not portable though.  It isn't always the same as uint64_t.  Works on OS/X so I'll keep it
-    // until I get a Windows tests up.
 
-    long long n = signed_ntohll(*(long long*)p);
+    int64_t n = swaps8(*(int64_t*)p);
 
     // Use 03 to ensure we have "x.yz".  We use a buffer big enough that we know we can insert a '.'.
     char sz[30];
@@ -126,14 +124,12 @@ static PyObject* GetCash(const char* p)
 
 static PyObject* GetNumeric(const char* p, int len)
 {
-    // Converts a PostgreSQL numeric column to a Python decimal.Decimal object.
-
     int16_t* pi = (int16_t*)p;
 
-    int16_t ndigits = signed_ntohs(pi[0]);
-    int16_t weight  = signed_ntohs(pi[1]);
-    int16_t sign    = signed_ntohs(pi[2]);
-    int16_t dscale  = signed_ntohs(pi[3]);
+    int16_t ndigits = swaps2(pi[0]);
+    int16_t weight  = swaps2(pi[1]);
+    int16_t sign    = swaps2(pi[2]);
+    int16_t dscale  = swaps2(pi[3]);
     const char* digits = &p[8];
 
     if (sign == -16384)
@@ -163,7 +159,7 @@ static PyObject* GetNumeric(const char* p, int len)
         
         for (iDigit = 0; iDigit <= weight; iDigit++)
         {
-            int digit = (iDigit < ndigits) ? signed_ntohs(pi[4 + iDigit]) : 0;
+            int digit = (iDigit < ndigits) ? swaps2(pi[4 + iDigit]) : 0;
 
             int d = digit / 1000;
             digit -= d * 1000;
@@ -207,7 +203,7 @@ static PyObject* GetNumeric(const char* p, int len)
         int scale = 0;
         while (scale < dscale)
         {
-            int digit = (iDigit < ndigits) ? signed_ntohs(pi[4 + iDigit]) : 0;
+            int digit = (iDigit < ndigits) ? swaps2(pi[4 + iDigit]) : 0;
             iDigit++;
 
             int d = digit / 1000;
@@ -262,7 +258,7 @@ static PyObject* GetTimestamp(const char* p, int len, bool integer_datetimes)
     {
         // Number of milliseconds since the Postgres epoch.
 
-        uint64_t n = signed_ntohll(*(uint64_t*)p);
+        uint64_t n = swapu8(*(uint64_t*)p);
 
         microsecond = n % 1000000;
         n /= 1000000;

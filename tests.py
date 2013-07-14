@@ -329,6 +329,10 @@ class PGTestCase(unittest.TestCase):
         self.assertEqual(result, value)
 
 
+    def test_dev(self):
+        # A placeholder for development.
+        pass
+
 def _check_conninfo(value):
     value = value.strip()
     if not re.match(r'^\w+=\w+$', value):
