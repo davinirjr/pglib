@@ -2,8 +2,10 @@
 #include "pglib.h"
 #include "debug.h"
 
-void DumpBytes(const char* p, int len)
+void DumpBytes(const void* v, int len)
 {
+    const char* p = (const char*)v;
+
     printf("len=%d\n", len);
     for (int i = 0; i < len; i++)
     {

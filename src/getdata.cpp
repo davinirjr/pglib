@@ -1,7 +1,6 @@
 
 #include "pglib.h"
 #include <datetime.h>
-
 #include "getdata.h"
 #include "resultset.h"
 #include "row.h"
@@ -9,9 +8,13 @@
 #include "decimal.h"
 #include "juliandate.h"
 
+#include "debug.h"
+
 static PyObject* GetCash(const char* p);
 static PyObject* GetDate(const char* p);
 static PyObject* GetTime(const char* p);
+static PyObject* GetFloat4(const char* p);
+static PyObject* GetFloat8(const char* p);
 static PyObject* GetNumeric(const char* p, int len);
 static PyObject* GetTimestamp(const char* p, bool integer_datetimes);
 
@@ -64,6 +67,12 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_dateti
     case TIMEOID:
         return GetTime(p);
 
+    case FLOAT4OID:
+        return GetFloat4(p);
+
+    case FLOAT8OID:
+        return GetFloat8(p);
+
     case TIMESTAMPOID:
         return GetTimestamp(p, integer_datetimes);
 
@@ -81,7 +90,7 @@ struct TempBuffer
 
     char* p;
     bool on_heap;
-    
+
     TempBuffer(char* pStack, ssize_t cbStack, ssize_t cbNeeded)
     {
         if (cbNeeded <= cbStack)
@@ -97,7 +106,7 @@ struct TempBuffer
                 PyErr_NoMemory();
         }
     }
-    
+
     ~TempBuffer()
     {
         if (p && on_heap)
@@ -139,7 +148,7 @@ static PyObject* GetNumeric(const char* p, int len)
         return Decimal_NaN();
 
     // Calculate the string length.  Each 16-bit "digit" represents 4 digits.
-    
+
     int slen = (ndigits * 4) + dscale + 2; // 2 == '.' and '-'
 
     char szBuffer[1024];
@@ -151,7 +160,7 @@ static PyObject* GetNumeric(const char* p, int len)
 
     if (sign != 0)
         *pch++ = '-';
-    
+
     // Digits before decimal point.
 
     int iDigit = 0;
@@ -159,7 +168,7 @@ static PyObject* GetNumeric(const char* p, int len)
     if (weight >= 0)
     {
         bool nonzero = false;
-        
+
         for (iDigit = 0; iDigit <= weight; iDigit++)
         {
             int digit = (iDigit < ndigits) ? swaps2(pi[4 + iDigit]) : 0;
@@ -242,6 +251,16 @@ static PyObject* GetNumeric(const char* p, int len)
     *pch = 0;
 
     return Decimal_FromASCII(buffer.p);
+}
+
+static PyObject* GetFloat4(const char* p)
+{
+    return PyFloat_FromDouble(swapfloat(*(float*)p));
+}
+
+static PyObject* GetFloat8(const char* p)
+{
+    return PyFloat_FromDouble(swapdouble(*(double*)p));
 }
 
 static PyObject* GetDate(const char* p)

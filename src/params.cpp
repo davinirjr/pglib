@@ -8,6 +8,7 @@
 #include "byteswap.h"
 
 static bool BindBool(Connection* cnxn, Params& params, PyObject* param);
+static bool BindFloat(Connection* cnxn, Params& params, PyObject* param);
 static bool BindDate(Connection* cnxn, Params& params, PyObject* param);
 static bool BindTime(Connection* cnxn, Params& params, PyObject* param);
 static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param);
@@ -46,7 +47,7 @@ Params::Params(int _count)
     bound = 0;
     
     types   = (Oid*)  malloc(count * sizeof(Oid));
-    values  = (char**)malloc(count * sizeof(char*));
+    values  = (const char**)malloc(count * sizeof(char*));
     lengths = (int*)  malloc(count * sizeof(int));
     formats = (int*)  malloc(count * sizeof(int));
 
@@ -69,10 +70,10 @@ Params::~Params()
     }
 }
 
-bool Params::Bind(Oid type, char* value, int length, int format)
+bool Params::Bind(Oid type, const void* value, int length, int format)
 {
     types[bound]   = type;
-    values[bound]  = value;
+    values[bound]  = (const char*)value;
     lengths[bound] = length;
     formats[bound] = format;
 
@@ -130,7 +131,7 @@ bool BindUnicode(Connection* cnxn, Params& params, PyObject* param)
     if (p == 0)
         return false;
 
-    return params.Bind(TEXTOID, (char*)p, cb, 0);
+    return params.Bind(TEXTOID, p, cb, 0);
 }
 
 bool BindDecimal(Connection* cnxn, Params& params, PyObject* param)
@@ -154,7 +155,7 @@ bool BindDecimal(Connection* cnxn, Params& params, PyObject* param)
 
     strcpy(p, pch);
 
-    return params.Bind(NUMERICOID, (char*)p, cch + 1, 0);
+    return params.Bind(NUMERICOID, p, cch + 1, 0);
 }
 
 
@@ -183,7 +184,7 @@ bool BindLong(Connection* cnxn, Params& params, PyObject* param)
             if (p == 0)
                 return false;
             *p = htons(lvalue);
-            return params.Bind(INT2OID, (char*)p, 2, 1); // 2=16 bit, 1=binary
+            return params.Bind(INT2OID, p, 2, 1); // 2=16 bit, 1=binary
         }
 
         if (MIN_INTEGER <= lvalue && lvalue <= MAX_INTEGER)
@@ -192,7 +193,7 @@ bool BindLong(Connection* cnxn, Params& params, PyObject* param)
             if (p == 0)
                 return false;
             *p = htonl(lvalue);
-            return params.Bind(INT4OID, (char*)p, 4, 1); // 2=16 bit, 1=binary
+            return params.Bind(INT4OID, p, 4, 1); // 2=16 bit, 1=binary
         }
     }
     
@@ -287,16 +288,15 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
             if (!BindTime(cnxn, params, param))
                 return false;
         }
+        else if (PyFloat_Check(param))
+        {
+            if (!BindFloat(cnxn, params, param))
+                return false;
+        }
         /*
     if (PyBytes_Check(param))
         return GetBytesInfo(cur, index, param, info);
 
-
-    if (PyLong_Check(param))
-        return GetLongInfo(cur, index, param, info);
-
-    if (PyFloat_Check(param))
-        return GetFloatInfo(cur, index, param, info);
 
 #if PY_VERSION_HEX >= 0x02060000
     if (PyByteArray_Check(param))
@@ -321,7 +321,7 @@ static const char TRUEBYTE  = 1;
 static bool BindBool(Connection* cnxn, Params& params, PyObject* param)
 {
     const char* p = (param == Py_True) ? &TRUEBYTE : &FALSEBYTE;
-    return params.Bind(BOOLOID, (char*)p, 1, 1);
+    return params.Bind(BOOLOID, p, 1, 1);
 }
 
 static bool BindDate(Connection* cnxn, Params& params, PyObject* param)
@@ -334,7 +334,7 @@ static bool BindDate(Connection* cnxn, Params& params, PyObject* param)
         return false;
 
     *p = swapu4(julian);
-    params.Bind(DATEOID, (char*)p, 4, 1);
+    params.Bind(DATEOID, p, 4, 1);
     return true;
 }
 
@@ -356,7 +356,7 @@ static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param)
 
     *p = swapu8(timestamp);
 
-    params.Bind(TIMESTAMPOID, (char*)p, 8, 1);
+    params.Bind(TIMESTAMPOID, p, 8, 1);
     return true;
 }
 
@@ -376,6 +376,21 @@ static bool BindTime(Connection* cnxn, Params& params, PyObject* param)
 
     *p = swapu8(value);
 
-    params.Bind(TIMEOID, (char*)p, 8, 1);
+    params.Bind(TIMEOID, p, 8, 1);
     return true;
 }
+
+static bool BindFloat(Connection* cnxn, Params& params, PyObject* param)
+{
+    double value = PyFloat_AS_DOUBLE(param);
+    
+    double* p = (double*)params.Allocate(8);
+    if (p == 0)
+        return false;
+    
+    *p = swapdouble(value);
+
+    params.Bind(FLOAT8OID, p, 8, 1);
+    return true;
+}
+

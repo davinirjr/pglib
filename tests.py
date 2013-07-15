@@ -35,7 +35,7 @@ class PGTestCase(unittest.TestCase):
     # # If we are reading a binary, string, or unicode value and do not know how large it is, we'll try reading 2K into a
     # # buffer on the stack.  We then copy into a new Python object.
     # SMALL_READ  = 2048
-    #  
+    #
     # # A read guaranteed not to fit in the MAX_STACK_STACK stack buffer, but small enough to be used for varchar (4K max).
     # LARGE_READ = 4000
 
@@ -55,7 +55,7 @@ class PGTestCase(unittest.TestCase):
                 self.cnxn.execute("drop table t%d" % i)
             except:
                 pass
-        
+
         # self.cnxn.rollback()
 
 
@@ -121,7 +121,7 @@ class PGTestCase(unittest.TestCase):
         self.cnxn.execute("create table t1(a int)")
         value = self.cnxn.row("select a from t1")
         self.assertEqual(value, None)
-        
+
     def test_row_one(self):
         self.cnxn.execute("create table t1(a int)")
         self.cnxn.execute("insert into t1 values (1)")
@@ -172,7 +172,7 @@ class PGTestCase(unittest.TestCase):
         self.cnxn.execute("create table t1(a int)")
         value = self.cnxn.scalar("select a from t1")
         self.assertEqual(value, None)
-        
+
     def test_scalar_one(self):
         """
         Ensure cnxn.scalar() returns the first column if one row is selected.
@@ -249,6 +249,28 @@ class PGTestCase(unittest.TestCase):
         for value in [1, 2147483647]:
             result = self.cnxn.scalar("select a from t1 where a=$1", value)
             self.assertEqual(result, value)
+
+    def test_float4(self):
+        self.cnxn.execute("create table t1(a float4)")
+        for value in [1.2, -3.4]:
+            self.cnxn.execute("delete from t1")
+            self.cnxn.execute("insert into t1 values($1)", value)
+            result = self.cnxn.scalar("select a from t1")
+
+            # Careful.  Python doesn't have a float4 datatype, so an float8 is returned.  Unfortunately this means values
+            # won't always match even though they "look" like they do when you print them.
+            result = round(result, 2)
+
+            self.assertEqual(result, value)
+
+    def test_float8(self):
+        self.cnxn.execute("create table t1(a float8)")
+        for value in [1.2]:
+            self.cnxn.execute("delete from t1")
+            self.cnxn.execute("insert into t1 values($1)", value)
+            result = self.cnxn.scalar("select a from t1")
+            self.assertEqual(result, value)
+
 
     def test_decimal(self):
         self.cnxn.execute("create table t1(a decimal(100,7))")
@@ -399,7 +421,7 @@ def add_to_path():
     library_exts  = [ t[0] for t in imp.get_suffixes() if t[-1] == imp.C_EXTENSION ]
     library_names = [ 'pglib%s' % ext for ext in library_exts ]
 
-    # Only go into directories that match our version number. 
+    # Only go into directories that match our version number.
 
     dir_suffix = '-%s.%s' % (sys.version_info[0], sys.version_info[1])
 
@@ -414,7 +436,7 @@ def add_to_path():
             if name in files:
                 sys.path.insert(0, root)
                 return
-                
+
     print('Did not find the pglib library in the build directory.  Will use an installed version.')
 
 

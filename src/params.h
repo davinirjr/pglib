@@ -9,7 +9,7 @@ struct Pool;
 struct Params
 {
     Oid*   types;
-    char** values;
+    const char** values;
     int*   lengths;
     int*   formats;
 
@@ -28,7 +28,7 @@ struct Params
 
     char* Allocate(size_t cbNeeded);
 
-    bool Bind(Oid type, char* value, int length, int format);
+    bool Bind(Oid type, const void* value, int length, int format);
 };
 
 bool BindParams(Connection* cnxn, Params& params, PyObject* args);
