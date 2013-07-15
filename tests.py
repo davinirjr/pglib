@@ -333,6 +333,26 @@ class PGTestCase(unittest.TestCase):
         locals()['test_char_%s' % len(value)] = _maketest(value)
 
     #
+    # bytea / bytearray
+    #
+
+    def test_bytea(self):
+        # Add a NULL byte in the middle to ensure strcpy isn't being used.
+        value = b'\xde\xad\x00\xbe\xef'
+        self.cnxn.execute("create table t1(a bytea)")
+        self.cnxn.execute("insert into t1 values ($1)", value)
+        result = self.cnxn.scalar("select * from t1")
+        self.assertEqual(value, result)
+
+    def test_bytea(self):
+        # Add a NULL byte in the middle to ensure strcpy isn't being used.
+        value = b'\xde\xad\x00\xbe\xef'
+        self.cnxn.execute("create table t1(a bytea)")
+        self.cnxn.execute("insert into t1 values ($1)", value)
+        result = self.cnxn.scalar("select * from t1")
+        self.assertEqual(value, result)
+
+    #
     # date / timestamp
     #
 

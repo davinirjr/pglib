@@ -8,10 +8,15 @@
 #include "byteswap.h"
 
 static bool BindBool(Connection* cnxn, Params& params, PyObject* param);
-static bool BindFloat(Connection* cnxn, Params& params, PyObject* param);
+static bool BindByteArray(Connection* cnxn, Params& params, PyObject* param);
+static bool BindBytes(Connection* cnxn, Params& params, PyObject* param);
 static bool BindDate(Connection* cnxn, Params& params, PyObject* param);
-static bool BindTime(Connection* cnxn, Params& params, PyObject* param);
 static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param);
+static bool BindDecimal(Connection* cnxn, Params& params, PyObject* param);
+static bool BindFloat(Connection* cnxn, Params& params, PyObject* param);
+static bool BindLong(Connection* cnxn, Params& params, PyObject* param);
+static bool BindTime(Connection* cnxn, Params& params, PyObject* param);
+static bool BindUnicode(Connection* cnxn, Params& params, PyObject* param);
 
 void Params_Init()
 {
@@ -122,7 +127,89 @@ char* Params::Allocate(size_t amount)
     return p;
 }
 
-bool BindUnicode(Connection* cnxn, Params& params, PyObject* param)
+bool BindParams(Connection* cnxn, Params& params, PyObject* args)
+{
+    // Binds arguments 1-n.  Argument zero is expected to be the SQL statement itself.
+
+    if (!params.valid())
+    {
+        PyErr_NoMemory();
+        return false;
+    }
+
+    for (int i = 0, c = PyTuple_GET_SIZE(args)-1; i < c; i++)
+    {
+        // Remember that a bool is a long, a datetime is a date, etc, so the order we check them in is important.
+
+        PyObject* param = PyTuple_GET_ITEM(args, i+1);
+        if (param == Py_None)
+        {
+            params.types[i]   = 0;
+            params.values[i]  = 0;
+            params.lengths[i] = 0;
+            params.formats[i] = 0;
+        }
+        else if (PyBool_Check(param))
+        {
+            if (!BindBool(cnxn, params, param))
+                return false;
+        }
+        else if (PyLong_Check(param))
+        {
+            if (!BindLong(cnxn, params, param))
+                return false;
+        }
+        else if (PyUnicode_Check(param))
+        {
+            if (!BindUnicode(cnxn, params, param))
+                return false;
+        }
+        else if (PyDecimal_Check(param))
+        {
+            if (!BindDecimal(cnxn, params, param))
+                return false;
+        }
+        else if (PyDateTime_Check(param))
+        {
+            if (!BindDateTime(cnxn, params, param))
+                return false;
+        }
+        else if (PyDate_Check(param))
+        {
+            if (!BindDate(cnxn, params, param))
+                return false;
+        }
+        else if (PyTime_Check(param))
+        {
+            if (!BindTime(cnxn, params, param))
+                return false;
+        }
+        else if (PyFloat_Check(param))
+        {
+            if (!BindFloat(cnxn, params, param))
+                return false;
+        }
+        else if (PyBytes_Check(param))
+        {
+            if (!BindBytes(cnxn, params, param))
+                return false;
+        }
+        else if (PyByteArray_Check(param))
+        {
+            if (BindByteArray(cnxn, params, param))
+                return false;
+        }
+        else
+        {
+            PyErr_Format(Error, "Unable to bind parameter %d: unhandled object type %R", (i+1), param);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool BindUnicode(Connection* cnxn, Params& params, PyObject* param)
 {
     // TODO: Right now we *require* the encoding to be UTF-8.
 
@@ -134,7 +221,7 @@ bool BindUnicode(Connection* cnxn, Params& params, PyObject* param)
     return params.Bind(TEXTOID, p, cb, 0);
 }
 
-bool BindDecimal(Connection* cnxn, Params& params, PyObject* param)
+static bool BindDecimal(Connection* cnxn, Params& params, PyObject* param)
 {
     // TODO: How are we going to deal with NaN, etc.?
 
@@ -159,7 +246,7 @@ bool BindDecimal(Connection* cnxn, Params& params, PyObject* param)
 }
 
 
-bool BindLong(Connection* cnxn, Params& params, PyObject* param)
+static bool BindLong(Connection* cnxn, Params& params, PyObject* param)
 {
     // Note: Integers must be in network order.
 
@@ -228,93 +315,6 @@ bool BindLong(Connection* cnxn, Params& params, PyObject* param)
 }
 
 
-bool BindParams(Connection* cnxn, Params& params, PyObject* args)
-{
-    // Binds arguments 1-n.  Argument zero is expected to be the SQL statement itself.
-
-    if (!params.valid())
-    {
-        PyErr_NoMemory();
-        return false;
-    }
-
-    for (int i = 0, c = PyTuple_GET_SIZE(args)-1; i < c; i++)
-    {
-        // printf("parameter %d\n", i+1);
-        // Dump(params);
-
-        // Remember that a bool is a long, a datetime is a date, etc, so the order we check them in is important.
-
-        PyObject* param = PyTuple_GET_ITEM(args, i+1);
-        if (param == Py_None)
-        {
-            params.types[i]   = 0;
-            params.values[i]  = 0;
-            params.lengths[i] = 0;
-            params.formats[i] = 0;
-        }
-        else if (PyBool_Check(param))
-        {
-            if (!BindBool(cnxn, params, param))
-                return false;
-        }
-        else if (PyLong_Check(param))
-        {
-            if (!BindLong(cnxn, params, param))
-                return false;
-        }
-        else if (PyUnicode_Check(param))
-        {
-            if (!BindUnicode(cnxn, params, param))
-                return false;
-        }
-        else if (PyDecimal_Check(param))
-        {
-            if (!BindDecimal(cnxn, params, param))
-                return false;
-        }
-        else if (PyDateTime_Check(param))
-        {
-            if (!BindDateTime(cnxn, params, param))
-                return false;
-        }
-        else if (PyDate_Check(param))
-        {
-            if (!BindDate(cnxn, params, param))
-                return false;
-        }
-        else if (PyTime_Check(param))
-        {
-            if (!BindTime(cnxn, params, param))
-                return false;
-        }
-        else if (PyFloat_Check(param))
-        {
-            if (!BindFloat(cnxn, params, param))
-                return false;
-        }
-        /*
-    if (PyBytes_Check(param))
-        return GetBytesInfo(cur, index, param, info);
-
-
-#if PY_VERSION_HEX >= 0x02060000
-    if (PyByteArray_Check(param))
-        return GetByteArrayInfo(cur, index, param, info);
-#endif
-         */
-        else
-        {
-            PyErr_Format(Error, "Unable to bind parameter %d: unhandled object type %R", (i+1), param);
-            return false;
-        }
-    }
-
-    // Dump(params);
-
-    return true;
-}
-
 static const char FALSEBYTE = 0;
 static const char TRUEBYTE  = 1;
 
@@ -379,6 +379,24 @@ static bool BindTime(Connection* cnxn, Params& params, PyObject* param)
     params.Bind(TIMEOID, p, 8, 1);
     return true;
 }
+
+static bool BindBytes(Connection* cnxn, Params& params, PyObject* param)
+{
+    char* p = PyBytes_AS_STRING(param);
+    Py_ssize_t cb = PyBytes_GET_SIZE(param);
+    params.Bind(BYTEAOID, p, cb, 1);
+    return true;
+}
+
+
+static bool BindByteArray(Connection* cnxn, Params& params, PyObject* param)
+{
+    char* p = PyByteArray_AS_STRING(param);
+    Py_ssize_t cb = PyByteArray_GET_SIZE(param);
+    params.Bind(BYTEAOID, p, cb, 1);
+    return true;
+}
+
 
 static bool BindFloat(Connection* cnxn, Params& params, PyObject* param)
 {

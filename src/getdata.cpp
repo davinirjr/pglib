@@ -16,6 +16,7 @@ static PyObject* GetTime(const char* p);
 static PyObject* GetFloat4(const char* p);
 static PyObject* GetFloat8(const char* p);
 static PyObject* GetNumeric(const char* p, int len);
+static PyObject* GetBytes(const char* p, int len);
 static PyObject* GetTimestamp(const char* p, bool integer_datetimes);
 
 bool GetData_init()
@@ -45,6 +46,9 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_dateti
     case BPCHAROID:
     case VARCHAROID:
         return PyUnicode_DecodeUTF8((const char*)p, strlen((const char*)p), 0);
+
+    case BYTEAOID:
+        return GetBytes(p, PQgetlength(result, iRow, iCol));
 
     case INT2OID:
         return PyLong_FromLong(swaps2(*(int16_t*)p));
@@ -284,6 +288,11 @@ static PyObject* GetTime(const char* p)
     int hour = value;
 
     return PyTime_FromTime(hour, minute, second, microsecond);
+}
+
+static PyObject* GetBytes(const char* p, int len)
+{
+    return PyBytes_FromStringAndSize(p, len);
 }
 
 
