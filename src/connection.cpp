@@ -7,19 +7,6 @@
 #include "getdata.h"
 #include "row.h"
 
-static const char* EXEC_STATUS_TEXT[] =
-{
-    "PGRES_EMPTY_QUERY",
-    "PGRES_COMMAND_OK",
-    "PGRES_TUPLES_OK",
-    "PGRES_COPY_OUT",
-    "PGRES_COPY_IN",
-    "PGRES_BAD_RESPONSE",
-    "PGRES_NONFATAL_ERROR",
-    "PGRES_FATAL_ERROR",
-    "PGRES_COPY_BOTH"
-};
-
 
 static void notice_receiver(void *arg, const PGresult* res)
 {
@@ -121,41 +108,43 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
 {
     Connection* cnxn = (Connection*)self;
 
-    PGresult* result = internal_execute(self, args);
+    ResultHolder result = internal_execute(self, args);
     if (result == 0)
         return 0;
 
     ExecStatusType status = PQresultStatus(result);
 
-    // printf("status: %s\n", EXEC_STATUS_TEXT[status]);
-
-    if (status == PGRES_TUPLES_OK)
+    switch (status)
     {
-        // Result_New will take ownership of `result`.
-        return ResultSet_New(cnxn, result);
-    }
+    case PGRES_TUPLES_OK:
+        return ResultSet_New(cnxn, result.Detach());
 
-    if (status == PGRES_COMMAND_OK)
+    case PGRES_COMMAND_OK:
     {
         const char* sz = PQcmdTuples(result);
         if (sz == 0 || *sz == 0)
             Py_RETURN_NONE;
-
         return PyLong_FromLong(atoi(sz));
     }
+        
+    case PGRES_EMPTY_QUERY:
+        // This means an empty string was passed, but we check that already so we should never get here.
+        Py_RETURN_NONE;
 
-    switch (status)
-    {
     case PGRES_COPY_OUT:
     case PGRES_COPY_IN:
     case PGRES_COPY_BOTH:
-    case PGRES_NONFATAL_ERROR: // ?
-        PQclear(result);
         Py_RETURN_NONE;
+
+    case PGRES_BAD_RESPONSE:
+    case PGRES_NONFATAL_ERROR:
+    case PGRES_FATAL_ERROR:
+        // Fall through and return an error.
+        break;
     }
 
     // SetResultError will take ownership of `result`.
-    return SetResultError(result);
+    return SetResultError(result.Detach());
 }
 
 static PyObject* Connection_row(PyObject* self, PyObject* args)

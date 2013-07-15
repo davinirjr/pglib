@@ -1,5 +1,7 @@
 
 #include "pglib.h"
+#include <datetime.h>
+
 #include "getdata.h"
 #include "resultset.h"
 #include "row.h"
@@ -7,12 +9,11 @@
 #include "decimal.h"
 #include "juliandate.h"
 
-static void DumpBytes(const char* p, int len);
-
 static PyObject* GetCash(const char* p);
 static PyObject* GetDate(const char* p);
+static PyObject* GetTime(const char* p);
 static PyObject* GetNumeric(const char* p, int len);
-static PyObject* GetTimestamp(const char* p, int len, bool integer_datetimes);
+static PyObject* GetTimestamp(const char* p, bool integer_datetimes);
 
 bool GetData_init()
 {
@@ -60,8 +61,11 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_dateti
     case DATEOID:
         return GetDate(p);
 
+    case TIMEOID:
+        return GetTime(p);
+
     case TIMESTAMPOID:
-        return GetTimestamp(p, PQgetlength(result, iRow, iCol), integer_datetimes);
+        return GetTimestamp(p, integer_datetimes);
 
     case BOOLOID:
         return PyBool_FromLong(*p);
@@ -130,7 +134,6 @@ static PyObject* GetNumeric(const char* p, int len)
     int16_t weight  = swaps2(pi[1]);
     int16_t sign    = swaps2(pi[2]);
     int16_t dscale  = swaps2(pi[3]);
-    const char* digits = &p[8];
 
     if (sign == -16384)
         return Decimal_NaN();
@@ -243,14 +246,29 @@ static PyObject* GetNumeric(const char* p, int len)
 
 static PyObject* GetDate(const char* p)
 {
-    uint32_t julian = ntohl(*(uint32_t*)p) + JULIAN_START;
+    uint32_t value = swapu4(*(uint32_t*)p) + JULIAN_START;
     int year, month, date;
-    julianToDate(julian, year, month, date);
+    julianToDate(value, year, month, date);
     return PyDate_FromDate(year, month, date);
 }
 
+static PyObject* GetTime(const char* p)
+{
+    uint64_t value = swapu8(*(uint64_t*)p);
 
-static PyObject* GetTimestamp(const char* p, int len, bool integer_datetimes)
+    int microsecond = value % 1000000;
+    value /= 1000000;
+    int second = value % 60;
+    value /= 60;
+    int minute = value % 60;
+    value /= 60;
+    int hour = value;
+
+    return PyTime_FromTime(hour, minute, second, microsecond);
+}
+
+
+static PyObject* GetTimestamp(const char* p, bool integer_datetimes)
 {
     int year, month, day, hour, minute, second, microsecond;
 
@@ -280,16 +298,4 @@ static PyObject* GetTimestamp(const char* p, int len, bool integer_datetimes)
     }
 
     return PyDateTime_FromDateAndTime(year, month, day, hour, minute, second, microsecond);
-}
-
-static void DumpBytes(const char* p, int len)
-{
-    printf("len=%d\n", len);
-    for (int i = 0; i < len; i++)
-    {
-        if (i > 0 && (i % 10) == 0)
-            printf("\n");
-        printf("%02x", *(unsigned char*)&p[i]);
-    }
-    printf("\n");
 }

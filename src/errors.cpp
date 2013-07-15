@@ -50,7 +50,7 @@ PyObject* SetResultError(PGresult* r)
     if (!error)
         return 0;
 
-    for (int i = 0; i < _countof(errorFields); i++)
+    for (size_t i = 0; i < _countof(errorFields); i++)
     {
         const char* szValue = PQresultErrorField(result, errorFields[i].fieldcode);
 

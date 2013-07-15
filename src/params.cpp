@@ -1,5 +1,6 @@
 
 #include "pglib.h"
+#include <datetime.h>
 #include "connection.h"
 #include "params.h"
 #include "decimal.h"
@@ -8,22 +9,8 @@
 
 static bool BindBool(Connection* cnxn, Params& params, PyObject* param);
 static bool BindDate(Connection* cnxn, Params& params, PyObject* param);
+static bool BindTime(Connection* cnxn, Params& params, PyObject* param);
 static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param);
-
-static void DumpBytes(const char* p, int len)
-{
-    printf("len=%d\n", len);
-    for (int i = 0; i < len; i++)
-    {
-        if (i > 0 && (i % 4) == 0)
-            printf(" ");
-
-        if (i > 0 && (i % 10) == 0)
-            printf("\n");
-        printf("%02x", *(unsigned char*)&p[i]);
-    }
-    printf("\n");
-}
 
 void Params_Init()
 {
@@ -179,8 +166,8 @@ bool BindLong(Connection* cnxn, Params& params, PyObject* param)
     const long    MAX_SMALLINT = 32767; 
     const long    MIN_INTEGER  = -2147483647; // actually -2147483648, but generates warnings
     const long    MAX_INTEGER  = 2147483647;
-    const int64_t MIN_BIGINT   = -9223372036854775807LL; // -9223372036854775808LL actually
-    const int64_t MAX_BIGINT   = 9223372036854775807LL;
+    // const int64_t MIN_BIGINT   = -9223372036854775807LL; // -9223372036854775808LL actually
+    // const int64_t MAX_BIGINT   = 9223372036854775807LL;
 
     // Try a 32-bit integer.
 
@@ -295,16 +282,15 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
             if (!BindDate(cnxn, params, param))
                 return false;
         }
+        else if (PyTime_Check(param))
+        {
+            if (!BindTime(cnxn, params, param))
+                return false;
+        }
         /*
     if (PyBytes_Check(param))
         return GetBytesInfo(cur, index, param, info);
 
-
-    if (PyDate_Check(param))
-        return GetDateInfo(cur, index, param, info);
-
-    if (PyTime_Check(param))
-        return GetTimeInfo(cur, index, param, info);
 
     if (PyLong_Check(param))
         return GetLongInfo(cur, index, param, info);
@@ -347,7 +333,7 @@ static bool BindDate(Connection* cnxn, Params& params, PyObject* param)
     if (p == 0)
         return false;
 
-    *p = htonl(julian);
+    *p = swapu4(julian);
     params.Bind(DATEOID, (char*)p, 4, 1);
     return true;
 }
@@ -371,5 +357,25 @@ static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param)
     *p = swapu8(timestamp);
 
     params.Bind(TIMESTAMPOID, (char*)p, 8, 1);
+    return true;
+}
+
+static bool BindTime(Connection* cnxn, Params& params, PyObject* param)
+{
+    uint64_t value = PyDateTime_TIME_GET_HOUR(param);
+    value *= 60;
+    value += PyDateTime_TIME_GET_MINUTE(param);
+    value *= 60;
+    value += PyDateTime_TIME_GET_SECOND(param);
+    value *= 1000000;
+    value += PyDateTime_TIME_GET_MICROSECOND(param);
+
+    uint64_t* p = (uint64_t*)params.Allocate(8);
+    if (p == 0)
+        return false;
+
+    *p = swapu8(value);
+
+    params.Bind(TIMEOID, (char*)p, 8, 1);
     return true;
 }

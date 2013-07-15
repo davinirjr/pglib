@@ -305,15 +305,6 @@ static PyMappingMethods row_as_mapping =
 };
 */
 
-static char description_doc[] = "The Cursor.description sequence from the Cursor that created this row.";
-
-static PyMemberDef Row_members[] =
-{
-    // { "cursor_description", T_OBJECT_EX, offsetof(Row, description), READONLY, description_doc },
-    { 0 }
-};
-
-
 static PyMethodDef Row_methods[] =
 {
     // { "__reduce__", (PyCFunction)Row_reduce, METH_NOARGS, 0 },
@@ -376,7 +367,7 @@ PyTypeObject RowType =
     0,                                                      // tp_iter
     0,                                                      // tp_iternext
     Row_methods,                                            // tp_methods
-    Row_members,                                            // tp_members
+    0, // Row_members,                                            // tp_members
     0,                                                      // tp_getset
     0,                                                      // tp_base
     0,                                                      // tp_dict

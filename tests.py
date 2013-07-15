@@ -321,6 +321,13 @@ class PGTestCase(unittest.TestCase):
         result = self.cnxn.scalar("select a from t1")
         self.assertEqual(result, value)
 
+    def test_time(self):
+        value = time(12, 34, 56)
+        self.cnxn.execute("create table t1(a time)")
+        self.cnxn.execute("insert into t1 values ($1)", value)
+        result = self.cnxn.scalar("select a from t1")
+        self.assertEqual(result, value)
+
     def test_timestamp(self):
         self.cnxn.execute("create table t1(a timestamp)")
         value = datetime(2001, 2, 3, 4, 5, 6, 7)

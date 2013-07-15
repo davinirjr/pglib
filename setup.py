@@ -99,7 +99,9 @@ def _get_settings():
             settings['extra_compile_args'].extend('/Od /Ge /GS /GZ /RTC1 /Wp64 /Yd'.split())
 
     elif sys.platform == 'darwin':
-        # Temporary for Mavericks...
+
+        # If on Mavericks, the standard include directories are not in /usr/include.
+        
         settings['include_dirs'] = [
             '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/include'
         ]
@@ -109,11 +111,9 @@ def _get_settings():
 
         # Apple has decided they won't maintain the iODBC system in OS/X and has added deprecation warnings in 10.8.
         # For now target 10.7 to eliminate the warnings.
-
-        # Python functions take a lot of 'char *' that really should be const.  gcc complains about this *a lot*
-        # settings['extra_compile_args'] = ['-Wno-write-strings', '-Wno-deprecated-declarations']
-
         settings['define_macros'].append( ('MAC_OS_X_VERSION_10_7',) )
+
+        settings['extra_compile_args'] = ['-Wall']
 
     else:
         # Other posix-like: Linux, Solaris, etc.

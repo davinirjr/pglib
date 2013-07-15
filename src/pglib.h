@@ -17,13 +17,15 @@ extern "C"
 #include <boolobject.h>
 #include <unicodeobject.h>
 #include <structmember.h>
-#include <datetime.h>
-
 #include <sql.h>
 #include <sqlext.h>
 
 #if PY_VERSION_HEX < 0x03030000
 #error This branch is for Python 3.3+
+#endif
+
+#ifdef __APPLE__
+// Turn up clang compiler warnings.
 #endif
 
 #ifndef _countof
@@ -144,7 +146,7 @@ struct List : public Object
 
     PyObject* Join(PyObject* sep)
     {
-        PyUnicode_Join(sep, p);
+        return PyUnicode_Join(sep, p);
     }
 
     bool AppendAndIncrement(PyObject* o)
