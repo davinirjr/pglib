@@ -2,7 +2,7 @@
 #include "pglib.h"
 #include "connection.h"
 #include "resultset.h"
-#include "decimal.h"
+#include "datatypes.h"
 #include "getdata.h"
 #include "params.h"
 
@@ -113,10 +113,10 @@ PyMODINIT_FUNC PyInit_pglib()
     if (PyType_Ready(&ConnectionType) < 0 || PyType_Ready(&ResultSetType) < 0)
         return 0;
 
-    if (!Decimal_Init())
+    if (!DataTypes_Init())
         return 0;
 
-    if (!GetData_init())
+    if (!GetData_Init())
         return 0;
 
     Params_Init();

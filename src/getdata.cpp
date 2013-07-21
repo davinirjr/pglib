@@ -5,7 +5,7 @@
 #include "resultset.h"
 #include "row.h"
 #include "byteswap.h"
-#include "decimal.h"
+#include "datatypes.h"
 #include "juliandate.h"
 
 #include "debug.h"
@@ -13,80 +13,15 @@
 static PyObject* GetCash(const char* p);
 static PyObject* GetDate(const char* p);
 static PyObject* GetTime(const char* p);
-static PyObject* GetFloat4(const char* p);
-static PyObject* GetFloat8(const char* p);
 static PyObject* GetNumeric(const char* p, int len);
-static PyObject* GetBytes(const char* p, int len);
 static PyObject* GetTimestamp(const char* p, bool integer_datetimes);
 
-bool GetData_init()
+
+bool GetData_Init()
 {
     PyDateTime_IMPORT;
     return true;
 }
-
-PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_datetimes)
-{
-    // Used to read a column from the database and return a Python object.
-
-    if (PQgetisnull(result, iRow, iCol))
-        Py_RETURN_NONE;
-
-    // int format = PQfformat(result, iCol);
-    Oid oid = PQftype(result, iCol);
-
-    // printf("ConvertValue: col=%d fmt=%d oid=%d\n", iCol, format, (int)oid);
-
-    const char* p = PQgetvalue(result, iRow, iCol);
-
-
-    switch (oid)
-    {
-    case TEXTOID:
-    case BPCHAROID:
-    case VARCHAROID:
-        return PyUnicode_DecodeUTF8((const char*)p, strlen((const char*)p), 0);
-
-    case BYTEAOID:
-        return GetBytes(p, PQgetlength(result, iRow, iCol));
-
-    case INT2OID:
-        return PyLong_FromLong(swaps2(*(int16_t*)p));
-
-    case INT4OID:
-        return PyLong_FromLong(swaps4(*(int32_t*)p));
-
-    case INT8OID:
-        return PyLong_FromLongLong(swaps8(*(int64_t*)p));
-
-    case NUMERICOID:
-        return GetNumeric(p, PQgetlength(result, iRow, iCol));
-
-    case CASHOID:
-        return GetCash(p);
-
-    case DATEOID:
-        return GetDate(p);
-
-    case TIMEOID:
-        return GetTime(p);
-
-    case FLOAT4OID:
-        return GetFloat4(p);
-
-    case FLOAT8OID:
-        return GetFloat8(p);
-
-    case TIMESTAMPOID:
-        return GetTimestamp(p, integer_datetimes);
-
-    case BOOLOID:
-        return PyBool_FromLong(*p);
-    }
-
-    return PyErr_Format(Error, "ConvertValue: Unhandled OID %d\n", (int)oid);
-}
-
 
 struct TempBuffer
 {
@@ -257,12 +192,12 @@ static PyObject* GetNumeric(const char* p, int len)
     return Decimal_FromASCII(buffer.p);
 }
 
-static PyObject* GetFloat4(const char* p)
+inline PyObject* GetFloat4(const char* p)
 {
     return PyFloat_FromDouble(swapfloat(*(float*)p));
 }
 
-static PyObject* GetFloat8(const char* p)
+inline PyObject* GetFloat8(const char* p)
 {
     return PyFloat_FromDouble(swapdouble(*(double*)p));
 }
@@ -290,11 +225,10 @@ static PyObject* GetTime(const char* p)
     return PyTime_FromTime(hour, minute, second, microsecond);
 }
 
-static PyObject* GetBytes(const char* p, int len)
+inline PyObject* GetBytes(const char* p, int len)
 {
     return PyBytes_FromStringAndSize(p, len);
 }
-
 
 static PyObject* GetTimestamp(const char* p, bool integer_datetimes)
 {
@@ -326,4 +260,69 @@ static PyObject* GetTimestamp(const char* p, bool integer_datetimes)
     }
 
     return PyDateTime_FromDateAndTime(year, month, day, hour, minute, second, microsecond);
+}
+
+PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_datetimes)
+{
+    // Used to read a column from the database and return a Python object.
+
+    if (PQgetisnull(result, iRow, iCol))
+        Py_RETURN_NONE;
+
+    // int format = PQfformat(result, iCol);
+    Oid oid = PQftype(result, iCol);
+
+    // printf("ConvertValue: col=%d fmt=%d oid=%d\n", iCol, format, (int)oid);
+
+    const char* p = PQgetvalue(result, iRow, iCol);
+
+
+    switch (oid)
+    {
+    case TEXTOID:
+    case BPCHAROID:
+    case VARCHAROID:
+        return PyUnicode_DecodeUTF8((const char*)p, strlen((const char*)p), 0);
+
+    case BYTEAOID:
+        return GetBytes(p, PQgetlength(result, iRow, iCol));
+
+    case INT2OID:
+        return PyLong_FromLong(swaps2(*(int16_t*)p));
+
+    case INT4OID:
+        return PyLong_FromLong(swaps4(*(int32_t*)p));
+
+    case INT8OID:
+        return PyLong_FromLongLong(swaps8(*(int64_t*)p));
+
+    case NUMERICOID:
+        return GetNumeric(p, PQgetlength(result, iRow, iCol));
+
+    case CASHOID:
+        return GetCash(p);
+
+    case DATEOID:
+        return GetDate(p);
+
+    case TIMEOID:
+        return GetTime(p);
+
+    case FLOAT4OID:
+        return GetFloat4(p);
+
+    case FLOAT8OID:
+        return GetFloat8(p);
+
+    case TIMESTAMPOID:
+        return GetTimestamp(p, integer_datetimes);
+
+    case BOOLOID:
+        return PyBool_FromLong(*p);
+
+    case UUIDOID:
+        return UUID_FromBytes(p);
+    }
+
+    return PyErr_Format(Error, "ConvertValue: Unhandled OID %d\n", (int)oid);
 }

@@ -377,6 +377,17 @@ class PGTestCase(unittest.TestCase):
         result = self.cnxn.scalar("select a from t1")
         self.assertEqual(result, value)
 
+    #
+    # Miscellaneous
+    #
+
+    def test_uuid(self):
+        import uuid
+        value = uuid.UUID('4bfe4344-e7f2-41c3-ab88-1aecd79abd12')
+        self.cnxn.execute("create table t1(a uuid)")
+        self.cnxn.execute("insert into t1 values ($1)", value)
+        result = self.cnxn.scalar("select a from t1")
+        self.assertEqual(result, value)
 
     def test_dev(self):
         # A placeholder for development.

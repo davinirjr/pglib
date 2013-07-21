@@ -58,7 +58,7 @@ extern PyObject* Error;
 #define TIMEOID      1083
 #define TIMESTAMPOID 1114
 #define NUMERICOID   1700
-
+#define UUIDOID      2950
 
 // -----------------------------------------------------------------------------------------------
 // Debug

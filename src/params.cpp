@@ -3,7 +3,7 @@
 #include <datetime.h>
 #include "connection.h"
 #include "params.h"
-#include "decimal.h"
+#include "datatypes.h"
 #include "juliandate.h"
 #include "byteswap.h"
 
@@ -17,6 +17,7 @@ static bool BindFloat(Connection* cnxn, Params& params, PyObject* param);
 static bool BindLong(Connection* cnxn, Params& params, PyObject* param);
 static bool BindTime(Connection* cnxn, Params& params, PyObject* param);
 static bool BindUnicode(Connection* cnxn, Params& params, PyObject* param);
+static bool BindUUID(Connection* cnxn, Params& params, PyObject* param);
 
 void Params_Init()
 {
@@ -164,7 +165,7 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
             if (!BindUnicode(cnxn, params, param))
                 return false;
         }
-        else if (PyDecimal_Check(param))
+        else if (Decimal_Check(param))
         {
             if (!BindDecimal(cnxn, params, param))
                 return false;
@@ -196,7 +197,12 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
         }
         else if (PyByteArray_Check(param))
         {
-            if (BindByteArray(cnxn, params, param))
+            if (!BindByteArray(cnxn, params, param))
+                return false;
+        }
+        else if (UUID_Check(param))
+        {
+            if (!BindUUID(cnxn, params, param))
                 return false;
         }
         else
@@ -412,3 +418,17 @@ static bool BindFloat(Connection* cnxn, Params& params, PyObject* param)
     return true;
 }
 
+static bool BindUUID(Connection* cnxn, Params& params, PyObject* param)
+{
+    Object bytes(PyObject_GetAttrString(param, "bytes"));
+    if (!bytes)
+        return false;
+
+    Py_ssize_t cch = PyBytes_GET_SIZE(bytes.Get());
+    char* pch = params.Allocate(cch);
+    if (!pch)
+        return 0;
+    memcpy(pch, PyBytes_AS_STRING(bytes.Get()), cch);
+
+    return params.Bind(UUIDOID, pch, cch, 1);
+}
