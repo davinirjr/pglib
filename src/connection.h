@@ -9,6 +9,8 @@ struct Connection
     PyObject_HEAD
     PGconn* pgconn;
     bool integer_datetimes;
+
+    FILE* tracefile;
 };
 
 PyObject* Connection_New(const char* conninfo);

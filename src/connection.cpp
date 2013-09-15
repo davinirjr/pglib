@@ -42,6 +42,7 @@ PyObject* Connection_New(const char* conninfo)
 
     cnxn->pgconn = pgconn;
     cnxn->integer_datetimes = PQparameterStatus(pgconn, "integer_datetimes");
+    cnxn->tracefile = 0;
 
     return reinterpret_cast<PyObject*>(cnxn);
 }
@@ -185,6 +186,33 @@ static PyObject* Connection_row(PyObject* self, PyObject* args)
 }
 
 
+static PyObject* Connection_trace(PyObject* self, PyObject* args)
+{
+    const char* filename;
+    const char* mode = 0;
+    if (!PyArg_ParseTuple(args, "z|z", &filename, &mode))
+        return 0;
+
+    Connection* cnxn = (Connection*)self;
+
+    if (cnxn->tracefile)
+    {
+        PQuntrace(cnxn->pgconn);
+        fclose(cnxn->tracefile);
+        cnxn->tracefile = 0;
+    }
+
+    if (filename)
+    {
+        cnxn->tracefile = fopen(filename, mode ? mode : "w");
+        if (cnxn->tracefile == 0)
+            return PyErr_SetFromErrnoWithFilename(Error, filename);
+        PQtrace(cnxn->pgconn, cnxn->tracefile);
+    }
+
+    Py_RETURN_NONE;
+}
+
 static PyObject* Connection_scalar(PyObject* self, PyObject* args)
 {
     Connection* cnxn = (Connection*)self;
@@ -227,6 +255,9 @@ static void Connection_dealloc(PyObject* self)
         PQfinish(cnxn->pgconn);
         Py_END_ALLOW_THREADS
     }
+
+    if (cnxn->tracefile)
+        fclose(cnxn->tracefile);
 
     PyObject_Del(self);
 }
@@ -284,6 +315,7 @@ static struct PyMethodDef Connection_methods[] =
     { "execute", Connection_execute, METH_VARARGS, 0 },
     { "row",     Connection_row,     METH_VARARGS, 0 },
     { "scalar",  Connection_scalar,  METH_VARARGS, 0 },
+    { "trace",   Connection_trace,   METH_VARARGS, 0 },
     { 0, 0, 0, 0 }
 };
 

@@ -43,20 +43,22 @@ class PGTestCase(unittest.TestCase):
 
     STR_FENCEPOSTS = [ _generate_test_string(size) for size in STR_FENCEPOST_SIZES ]
 
-    def __init__(self, conninfo, method_name):
+    def __init__(self, args, conninfo, method_name):
         unittest.TestCase.__init__(self, method_name)
+        self.args = args
         self.conninfo = conninfo
 
     def setUp(self):
         self.cnxn = pglib.connect(self.conninfo)
+
+        if self.args.trace:
+            self.cnxn.trace(self.args.trace)
 
         for i in range(3):
             try:
                 self.cnxn.execute("drop table t%d" % i)
             except:
                 pass
-
-        # self.cnxn.rollback()
 
 
     def tearDown(self):
@@ -344,13 +346,14 @@ class PGTestCase(unittest.TestCase):
         result = self.cnxn.scalar("select * from t1")
         self.assertEqual(value, result)
 
-    def test_bytea(self):
-        # Add a NULL byte in the middle to ensure strcpy isn't being used.
-        value = b'\xde\xad\x00\xbe\xef'
-        self.cnxn.execute("create table t1(a bytea)")
-        self.cnxn.execute("insert into t1 values ($1)", value)
-        result = self.cnxn.scalar("select * from t1")
-        self.assertEqual(value, result)
+    # def test_bytea_wrongtype(self):
+    #     # Add a NULL byte in the middle to ensure strcpy isn't being used.
+    #     value = (b'\x80\x03cmtech.cornerstone.sessions\nSession\nq\x00)\x81q\x01}q\x02(X\x07\x00\x00\x00user_idq\x03NX\t\x00\x00\x00user_nameq\x04NX\x0b\x00\x00\x00permissionsq\x05cbuiltins\nset\nq\x06]q\x07\x85q\x08Rq\tub.',)
+    #     self.cnxn.execute("create table t1(a bytea)")
+    #     self.cnxn.execute("insert into t1 values ($1)", value)
+    #     result = self.cnxn.scalar("select * from t1")
+    #     self.assertEqual(value, result)
+
 
     #
     # date / timestamp
@@ -378,6 +381,23 @@ class PGTestCase(unittest.TestCase):
         self.assertEqual(result, value)
 
     #
+    # Error Handling
+    #
+
+    # def test_error_param_count(self):
+    #     """
+    #     Was seeing a segfault on OS/X when performing an update with 3 parameters
+    #     but supplying only 2 values.  There doesn't seem to be a way to determine this.
+    #     """
+    #     self.cnxn.execute("create table t1(a varchar(20), b varchar(20), c text)")
+    #     self.cnxn.execute("insert into t1(a) values ('1')")
+    #     with self.assertRaises(pglib.Error):
+    #         self.cnxn.execute("update t1 set b=$1, c=$2 where a=$1",
+    #                           'xyz',
+    #                           # purposely leave out value for 'c'
+    #                           '1')
+
+    #
     # Miscellaneous
     #
 
@@ -389,9 +409,14 @@ class PGTestCase(unittest.TestCase):
         result = self.cnxn.scalar("select a from t1")
         self.assertEqual(result, value)
 
-    def test_dev(self):
-        # A placeholder for development.
-        pass
+    def test_null_param(self):
+        # At one point, inserting a NULL parameter followed by a non-NULL parameter caused a segfault.
+        #
+        # A single parameter or two Nones did not crash.
+
+        self.cnxn.execute("create table t1(a varchar(20), b integer)")
+        self.cnxn.execute("insert into t1(a) values ($1)", 'testing')
+        self.cnxn.execute("update t1 set a=$1, b=$2", None, 1)
 
 def _check_conninfo(value):
     value = value.strip()
@@ -403,6 +428,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('-v', '--verbose', action='count', help='Increment verbosity', default=0)
     parser.add_argument('-t', '--test', help='Run only the named test')
+    parser.add_argument('--trace')
     parser.add_argument('conninfo', nargs='*', type=_check_conninfo, help='connection string component')
 
     args = parser.parse_args()
@@ -426,13 +452,13 @@ def main():
         if not args.test.startswith('test_'):
             args.test = 'test_%s' % (args.test)
 
-        s = unittest.TestSuite([ PGTestCase(conninfo, args.test) ])
+        s = unittest.TestSuite([ PGTestCase(args, conninfo, args.test) ])
     else:
         # Run all tests in the class
 
         methods = [ m for m in dir(PGTestCase) if m.startswith('test_') ]
         methods.sort()
-        s = unittest.TestSuite([ PGTestCase(conninfo, m) for m in methods ])
+        s = unittest.TestSuite([ PGTestCase(args, conninfo, m) for m in methods ])
 
     testRunner = unittest.TextTestRunner(verbosity=args.verbose)
     result = testRunner.run(s)

@@ -15,6 +15,7 @@ static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param);
 static bool BindDecimal(Connection* cnxn, Params& params, PyObject* param);
 static bool BindFloat(Connection* cnxn, Params& params, PyObject* param);
 static bool BindLong(Connection* cnxn, Params& params, PyObject* param);
+static bool BindNone(Connection* cnxn, Params& params, PyObject* param);
 static bool BindTime(Connection* cnxn, Params& params, PyObject* param);
 static bool BindUnicode(Connection* cnxn, Params& params, PyObject* param);
 static bool BindUUID(Connection* cnxn, Params& params, PyObject* param);
@@ -145,10 +146,8 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
         PyObject* param = PyTuple_GET_ITEM(args, i+1);
         if (param == Py_None)
         {
-            params.types[i]   = 0;
-            params.values[i]  = 0;
-            params.lengths[i] = 0;
-            params.formats[i] = 0;
+            if (!BindNone(cnxn, params, param))
+                return false;
         }
         else if (PyBool_Check(param))
         {
@@ -363,6 +362,12 @@ static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param)
     *p = swapu8(timestamp);
 
     params.Bind(TIMESTAMPOID, p, 8, 1);
+    return true;
+}
+
+static bool BindNone(Connection* cnxn, Params& params, PyObject* param)
+{
+    params.Bind(0,0,0,0);
     return true;
 }
 

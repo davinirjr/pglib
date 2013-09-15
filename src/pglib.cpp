@@ -65,8 +65,6 @@ static PyObject* mod_connect(PyObject* self, PyObject* args, PyObject* kwargs)
 
 static PyObject* mod_test(PyObject* self, PyObject* args)
 {
-    PyObject* error = PyObject_CallFunction(Error, (char*)"s", "testing");
-    PyErr_SetObject(Error, error);
     return 0;
 }
 
@@ -110,6 +108,12 @@ static bool InitConstants()
 
 PyMODINIT_FUNC PyInit_pglib()
 {
+    if (PQisthreadsafe() == 0)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Postgres libpq is not multithreaded");
+        return 0;
+    }
+
     if (PyType_Ready(&ConnectionType) < 0 || PyType_Ready(&ResultSetType) < 0)
         return 0;
 
