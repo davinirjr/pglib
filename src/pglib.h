@@ -17,8 +17,8 @@ extern "C"
 #include <boolobject.h>
 #include <unicodeobject.h>
 #include <structmember.h>
-#include <sql.h>
-#include <sqlext.h>
+// #include <sql.h>
+// #include <sqlext.h>
 
 #if PY_VERSION_HEX < 0x03030000
 #error This branch is for Python 3.3+

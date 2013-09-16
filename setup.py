@@ -118,6 +118,14 @@ def _get_settings():
     else:
         # Other posix-like: Linux, Solaris, etc.
 
+        settings['include_dirs'] = [
+            '/usr/pgsql-9.2/include'
+        ]
+
+        settings['library_dirs'] = [ '/usr/pgsql-9.2/lib/' ]
+        settings['libraries']    = ['pq']
+
+
         # Python functions take a lot of 'char *' that really should be const.  gcc complains about this *a lot*
         settings['extra_compile_args'] = ['-Wno-write-strings']
 

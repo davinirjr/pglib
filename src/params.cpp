@@ -7,6 +7,11 @@
 #include "juliandate.h"
 #include "byteswap.h"
 
+#if defined(__APPLE__)
+#else
+#include <arpa/inet.h>
+#endif
+
 static bool BindBool(Connection* cnxn, Params& params, PyObject* param);
 static bool BindByteArray(Connection* cnxn, Params& params, PyObject* param);
 static bool BindBytes(Connection* cnxn, Params& params, PyObject* param);
