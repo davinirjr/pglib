@@ -106,7 +106,7 @@ def _get_settings():
             '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/include'
         ]
 
-        settings['library_dirs'] = [ '/Library/PostgreSQL/9.1/lib/' ]
+        settings['library_dirs'] = [ '/Library/PostgreSQL/9.2/lib/' ]
         settings['libraries']    = ['pq']
 
         # Apple has decided they won't maintain the iODBC system in OS/X and has added deprecation warnings in 10.8.
