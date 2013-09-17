@@ -70,7 +70,7 @@ PyObject* Decimal_NaN()
 
 PyObject* UUID_FromBytes(const char* pch)
 {
-    char szBuffer[32];
+    char szBuffer[33];
     for (int i = 0; i < 16; i++)
         sprintf(&szBuffer[i * 2], "%02x", (int)(unsigned char)pch[i]);
     return PyObject_CallFunction(uuid_type, (char*)"s#", szBuffer, 32);
