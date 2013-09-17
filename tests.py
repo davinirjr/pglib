@@ -45,14 +45,18 @@ class PGTestCase(unittest.TestCase):
 
     def __init__(self, args, conninfo, method_name):
         unittest.TestCase.__init__(self, method_name)
+        self.cnxn = None
         self.args = args
         self.conninfo = conninfo
 
     def setUp(self):
-        self.cnxn = pglib.connect(self.conninfo)
+        if self.cnxn and self.args.reset:
+            self.cnxn.reset()
+        else:
+            self.cnxn = pglib.connect(self.conninfo)
 
-        if self.args.trace:
-            self.cnxn.trace(self.args.trace)
+            if self.args.trace:
+                self.cnxn.trace(self.args.trace)
 
         for i in range(3):
             try:
@@ -62,11 +66,13 @@ class PGTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        try:
-            self.cnxn.close()
-        except:
-            # If we've already closed the cursor or connection, exceptions are thrown.
-            pass
+
+        if not self.args.reset:
+            try:
+                self.cnxn = None
+            except:
+                # If we've already closed the cursor or connection, exceptions are thrown.
+                pass
 
 
     def _test_strtype(self, sqltype, value, resulttype=None, colsize=None):
@@ -426,16 +432,18 @@ def _check_conninfo(value):
 
 def main():
     parser = ArgumentParser()
+    parser.add_argument('-u', '--user')
     parser.add_argument('-v', '--verbose', action='count', help='Increment verbosity', default=0)
     parser.add_argument('-t', '--test', help='Run only the named test')
     parser.add_argument('--trace')
+    parser.add_argument('--reset', action='store_true', default=False, help="Reuse connection for tests")
     parser.add_argument('conninfo', nargs='*', type=_check_conninfo, help='connection string component')
 
     args = parser.parse_args()
 
     conninfo = {
         'host'   : 'localhost',
-        'dbname' : 'test'
+        'dbname' : 'test',
     }
 
     for part in args.conninfo:
@@ -446,6 +454,7 @@ def main():
 
     if args.verbose:
         print('Version:', pglib.version)
+        print('conninfo:', conninfo)
 
     if args.test:
         # Run a single test

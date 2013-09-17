@@ -7,7 +7,6 @@
 #include "getdata.h"
 #include "row.h"
 
-
 static void notice_receiver(void *arg, const PGresult* res)
 {
 }
@@ -67,17 +66,12 @@ static PGresult* internal_execute(PyObject* self, PyObject* args)
         return 0;
     }
 
-    // printf("SQL: %s\n", PyUnicode_AsUTF8(pSql));
-
     PGresult* result = 0;
     if (cParams == 0)
     {
-        // result = PQexec(cnxn->pgconn, PyUnicode_AsUTF8(pSql));
-
         result = PQexecParams(cnxn->pgconn, PyUnicode_AsUTF8(pSql),
                               0, 0, 0, 0, 0,
                               1); // binary format
-
     }
     else
     {
@@ -134,7 +128,8 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
 
     case PGRES_COPY_OUT:
     case PGRES_COPY_IN:
-      // case PGRES_COPY_BOTH:
+    // Missing from Linux 9.2 header files?  Will have to look at again.
+    // case PGRES_COPY_BOTH:
         Py_RETURN_NONE;
 
     case PGRES_BAD_RESPONSE:
@@ -157,8 +152,6 @@ static PyObject* Connection_row(PyObject* self, PyObject* args)
         return 0;
 
     ExecStatusType status = PQresultStatus(result);
-
-    // printf("status: %s\n", EXEC_STATUS_TEXT[status]);
 
     if (status != PGRES_TUPLES_OK)
     {
@@ -185,6 +178,12 @@ static PyObject* Connection_row(PyObject* self, PyObject* args)
     return Row_New((ResultSet*)rset.Get(), 0);
 }
 
+static PyObject* Connection_reset(PyObject* self, PyObject* args)
+{
+    Connection* cnxn = (Connection*)self;
+    PQreset(cnxn->pgconn);
+    Py_RETURN_NONE;
+}
 
 static PyObject* Connection_trace(PyObject* self, PyObject* args)
 {
@@ -223,8 +222,6 @@ static PyObject* Connection_scalar(PyObject* self, PyObject* args)
 
     ExecStatusType status = PQresultStatus(result);
 
-    // printf("status: %s\n", EXEC_STATUS_TEXT[status]);
-
     if (status != PGRES_TUPLES_OK)
     {
         PyErr_SetString(Error, "SQL wasn't a query");
@@ -244,20 +241,16 @@ static PyObject* Connection_scalar(PyObject* self, PyObject* args)
     return ConvertValue(result, 0, 0, cnxn->integer_datetimes);
 }
 
-
-
 static void Connection_dealloc(PyObject* self)
 {
     Connection* cnxn = (Connection*)self;
-    if (cnxn->pgconn)
-    {
-        Py_BEGIN_ALLOW_THREADS
-        PQfinish(cnxn->pgconn);
-        Py_END_ALLOW_THREADS
-    }
 
+    Py_BEGIN_ALLOW_THREADS
+    if (cnxn->pgconn)
+        PQfinish(cnxn->pgconn);
     if (cnxn->tracefile)
         fclose(cnxn->tracefile);
+    Py_END_ALLOW_THREADS
 
     PyObject_Del(self);
 }
@@ -316,6 +309,7 @@ static struct PyMethodDef Connection_methods[] =
     { "row",     Connection_row,     METH_VARARGS, 0 },
     { "scalar",  Connection_scalar,  METH_VARARGS, 0 },
     { "trace",   Connection_trace,   METH_VARARGS, 0 },
+    { "reset",   Connection_reset,   METH_NOARGS, 0 },
     { 0, 0, 0, 0 }
 };
 
