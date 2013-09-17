@@ -415,6 +415,32 @@ class PGTestCase(unittest.TestCase):
         result = self.cnxn.scalar("select a from t1")
         self.assertEqual(result, value)
 
+    def test_row_failure(self):
+        """
+        Calling cnxn.row() with invalid SQL used to return "SQL wasn't a
+        query" because row was not detecting the error before trying to access
+        results.
+        """
+        self.cnxn.execute("create table t1(a varchar(20))")
+        try:
+            self.cnxn.row("select bogus from t1")
+        except pglib.Error as ex:
+            msg = str(ex)
+            assert '[42703]' in msg
+
+    def test_scalar_failure(self):
+        """
+        Calling cnxn.scalar() with invalid SQL used to return "SQL wasn't a
+        query" because row was not detecting the error before trying to access
+        results.
+        """
+        self.cnxn.execute("create table t1(a varchar(20))")
+        try:
+            self.cnxn.scalar("select bogus from t1")
+        except pglib.Error as ex:
+            msg = str(ex)
+            assert '[42703]' in msg, "msg={!r}".format(msg)
+
     def test_null_param(self):
         # At one point, inserting a NULL parameter followed by a non-NULL parameter caused a segfault.
         #

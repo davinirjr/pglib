@@ -155,12 +155,26 @@ static PyObject* Connection_row(PyObject* self, PyObject* args)
 
     if (status != PGRES_TUPLES_OK)
     {
-        PyErr_SetString(Error, "SQL wasn't a query");
-        return 0;
+        switch (status)
+        {
+            case PGRES_COMMAND_OK:
+            case PGRES_EMPTY_QUERY:
+            case PGRES_COPY_OUT:
+            case PGRES_COPY_IN:
+            // case PGRES_COPY_BOTH:
+                PyErr_SetString(Error, "SQL wasn't a query");
+                return 0;
+
+            case PGRES_BAD_RESPONSE:
+            case PGRES_NONFATAL_ERROR:
+            case PGRES_FATAL_ERROR:
+            default:
+                // SetResultError will take ownership of `result`.
+                return SetResultError(result.Detach());
+        }
     }
 
     int cRows = PQntuples(result);
-
     if (cRows == 0)
     {
         Py_RETURN_NONE;
@@ -224,8 +238,23 @@ static PyObject* Connection_scalar(PyObject* self, PyObject* args)
 
     if (status != PGRES_TUPLES_OK)
     {
-        PyErr_SetString(Error, "SQL wasn't a query");
-        return 0;
+        switch (status)
+        {
+            case PGRES_COMMAND_OK:
+            case PGRES_EMPTY_QUERY:
+            case PGRES_COPY_OUT:
+            case PGRES_COPY_IN:
+            // case PGRES_COPY_BOTH:
+                PyErr_SetString(Error, "SQL wasn't a query");
+                return 0;
+
+            case PGRES_BAD_RESPONSE:
+            case PGRES_NONFATAL_ERROR:
+            case PGRES_FATAL_ERROR:
+            default:
+                // SetResultError will take ownership of `result`.
+                return SetResultError(result.Detach());
+        }
     }
 
     int cRows = PQntuples(result);
