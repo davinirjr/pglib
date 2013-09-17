@@ -1,5 +1,5 @@
 
-#include "pglib.h"g
+#include "pglib.h"
 
 // PostgreSQL stores data as 32-bit Julian dates, offset from 2001-01-01.
 
