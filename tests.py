@@ -118,6 +118,19 @@ class PGTestCase(unittest.TestCase):
             self.assertEqual(row.a, 'abc')
             self.assertEqual(row[0], 'abc')
 
+    def test_iter_twice(self):
+        "Ensure results can be iterated over multiple times"
+        self.cnxn.execute("create table t1(a varchar(20))")
+        self.cnxn.execute("insert into t1 values ('abc')")
+        rset = self.cnxn.execute("select * from t1")
+        for row in rset:
+            self.assertEqual(row.a, 'abc')
+            self.assertEqual(row[0], 'abc')
+        count = 0
+        for row in rset:
+            count += 1
+        self.assertEqual(count, 1)
+
     def test_version(self):
         self.assertEquals(3, len(pglib.version.split('.'))) # 1.3.1 etc.
 

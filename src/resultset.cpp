@@ -32,6 +32,9 @@ static void ResultSet_dealloc(PyObject* self)
 
 static PyObject* ResultSet_iter(PyObject* self)
 {
+    // You can iterate over results multiple times, but not at the same time.
+    ResultSet* rset = (ResultSet*)self;
+    rset->cFetched = 0;
     Py_INCREF(self);
     return self;
 }
