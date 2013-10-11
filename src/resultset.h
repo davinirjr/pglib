@@ -17,9 +17,12 @@ struct ResultSet
 
     Py_ssize_t cFetched;
 
+    bool integer_datetimes;
     // Obtained from the connection, but needed when reading timestamps at which time we won't have access to the
     // connection.
-    bool integer_datetimes;
+
+    PyObject* columns;
+    // A tuple of column names.  This is null until requested for the first time.
 };
 
 PyObject* ResultSet_New(Connection* cnxn, PGresult* result);

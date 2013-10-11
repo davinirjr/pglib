@@ -428,6 +428,12 @@ class PGTestCase(unittest.TestCase):
         result = self.cnxn.scalar("select a from t1")
         self.assertEqual(result, value)
 
+    def test_columns(self):
+        self.cnxn.execute("create table t1(a int, b int, c int)")
+        self.cnxn.execute("insert into t1 values (1,1,1)")
+        rset = self.cnxn.execute("select a,b,c from t1")
+        self.assertEqual(rset.columns, ('a', 'b', 'c'))
+
     def test_row_failure(self):
         """
         Calling cnxn.row() with invalid SQL used to return "SQL wasn't a

@@ -18,6 +18,7 @@ PyObject* ResultSet_New(Connection* cnxn, PGresult* result)
     rset->cCols             = PQnfields(result);
     rset->cFetched          = 0;
     rset->integer_datetimes = cnxn->integer_datetimes;
+    rset->columns           = 0;
 
     return reinterpret_cast<PyObject*>(rset);
 }
@@ -27,6 +28,7 @@ static void ResultSet_dealloc(PyObject* self)
     ResultSet* rset = (ResultSet*)self;
     if (rset->result)
         PQclear(rset->result);
+    Py_XDECREF(rset->columns);
     PyObject_Del(self);
 }
 
@@ -70,25 +72,42 @@ static PyObject* ResultSet_item(PyObject* self, Py_ssize_t i)
     return Row_New(rset, i);
 }
 
-/*
 static PyObject* ResultSet_getcolumns(ResultSet* self, void* closure)
 {
     UNUSED(closure);
 
-    if (self->columns == 0)
+    if (self->cCols == 0)
     {
+        Py_RETURN_NONE;
     }
 
-    Py_INCREF(self->first);
-    return self->first;
+    if (self->columns == 0)
+    {
+        Tuple cols(self->cCols);
+        if (!cols)
+            return 0;
+
+        for (int i = 0; i < self->cCols; i++)
+        {
+            const char* szName = PQfname(self->result, i);
+            PyObject* col = PyUnicode_DecodeUTF8(szName, strlen(szName), 0);
+            if (col == 0)
+                return 0;
+            cols.SetItem(i, col);
+        }
+
+        self->columns = cols.Detach();
+    }
+
+    Py_INCREF(self->columns);
+    return self->columns;
 }
 
-static PyMemberDef ResultSet_members[] =
+static PyGetSetDef ResultSet_getseters[] = 
 {
-    { (char*)"columns", T_OBJECT_EX, offsetof(ResultSet, columns), READONLY, 0 },
+    { (char*)"columns", (getter)ResultSet_getcolumns, 0, (char*)"tuple of column names", 0 },
     { 0 }
 };
-*/
 
 static PySequenceMethods rset_as_sequence =
 {
@@ -133,7 +152,7 @@ PyTypeObject ResultSetType =
     ResultSet_iternext,         // tp_iternext
     0, // ResultSet_methods,         // tp_methods
     0, // ResultSet_members,                          // tp_members
-    0,          // tp_getset
+    ResultSet_getseters,        // tp_getset
     0,                          // tp_base
     0,                          // tp_dict
     0,                          // tp_descr_get
