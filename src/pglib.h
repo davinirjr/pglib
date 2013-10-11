@@ -131,7 +131,7 @@ struct Tuple : public Object
 
     void SetItem(Py_ssize_t i, PyObject* item)
     {
-        PyTuple_SET_ITEM(this, i, item);
+        PyTuple_SET_ITEM(p, i, item);
     }
 
     operator bool() { return p != 0; }
