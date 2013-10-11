@@ -103,7 +103,13 @@ static PyObject* ResultSet_getcolumns(ResultSet* self, void* closure)
     return self->columns;
 }
 
-static PyGetSetDef ResultSet_getseters[] = 
+PyObject* ResultSet_GetColumns(ResultSet* rset)
+{
+    return ResultSet_getcolumns(rset, 0);
+}
+
+
+static PyGetSetDef ResultSet_getsetters[] = 
 {
     { (char*)"columns", (getter)ResultSet_getcolumns, 0, (char*)"tuple of column names", 0 },
     { 0 }
@@ -152,7 +158,7 @@ PyTypeObject ResultSetType =
     ResultSet_iternext,         // tp_iternext
     0, // ResultSet_methods,         // tp_methods
     0, // ResultSet_members,                          // tp_members
-    ResultSet_getseters,        // tp_getset
+    ResultSet_getsetters,        // tp_getset
     0,                          // tp_base
     0,                          // tp_dict
     0,                          // tp_descr_get

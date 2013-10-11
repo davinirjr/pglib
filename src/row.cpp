@@ -311,6 +311,18 @@ static PyMethodDef Row_methods[] =
     { 0, 0, 0, 0 }
 };
 
+static PyObject* Row_getcolumns(Row* self, void* closure)
+{
+    UNUSED(closure);
+    return ResultSet_GetColumns(self->rset);
+}
+
+static PyGetSetDef Row_getsetters[] = 
+{
+    { (char*)"columns", (getter)Row_getcolumns, 0, (char*)"tuple of column names", 0 },
+    { 0 }
+};
+
 
 static char row_doc[] =
     "Row objects are sequence objects that hold query results.\n"
@@ -368,7 +380,7 @@ PyTypeObject RowType =
     0,                                                      // tp_iternext
     Row_methods,                                            // tp_methods
     0, // Row_members,                                            // tp_members
-    0,                                                      // tp_getset
+    Row_getsetters,                                         // tp_getset
     0,                                                      // tp_base
     0,                                                      // tp_dict
     0,                                                      // tp_descr_get

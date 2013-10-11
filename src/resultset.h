@@ -27,4 +27,7 @@ struct ResultSet
 
 PyObject* ResultSet_New(Connection* cnxn, PGresult* result);
 
+PyObject* ResultSet_GetColumns(ResultSet* rset);
+// Calls the ResultSet columns getter.
+
 #endif // RESULTSET_H

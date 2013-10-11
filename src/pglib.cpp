@@ -2,6 +2,7 @@
 #include "pglib.h"
 #include "connection.h"
 #include "resultset.h"
+#include "row.h"
 #include "datatypes.h"
 #include "getdata.h"
 #include "params.h"
@@ -114,7 +115,7 @@ PyMODINIT_FUNC PyInit_pglib()
         return 0;
     }
 
-    if (PyType_Ready(&ConnectionType) < 0 || PyType_Ready(&ResultSetType) < 0)
+    if (PyType_Ready(&ConnectionType) < 0 || PyType_Ready(&ResultSetType) < 0 || PyType_Ready(&RowType) < 0)
         return 0;
 
     if (!DataTypes_Init())
@@ -141,6 +142,11 @@ PyMODINIT_FUNC PyInit_pglib()
     PyModule_AddStringConstant(module, "version", (char*)szVersion);
 
     PyModule_AddObject(module, "Error", Error);
+
+    PyModule_AddObject(module, "Row", (PyObject*)&RowType);
+    Py_INCREF((PyObject*)&RowType);
+    PyModule_AddObject(module, "ResultSet", (PyObject*)&ResultSetType);
+    Py_INCREF((PyObject*)&ResultSetType);
 
     return module.Detach();
 }
