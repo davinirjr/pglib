@@ -6,45 +6,76 @@
 
 PyObject* Row_New(ResultSet* rset, int iRow)
 {
-    Row* row = PyObject_NEW(Row, &RowType);
-    if (row == 0)
+    I(rset->columns != 0);
+
+    int cCols = PyTuple_GET_SIZE(rset->columns);
+    Tuple values(cCols);
+    if (!values)
         return 0;
 
-    Py_INCREF(rset);
+    for (int i = 0; i < cCols; i++)
+    {
+        PyObject* value = ConvertValue(rset->result, iRow, i, rset->integer_datetimes);
+        if (value == 0)
+            return 0;
+        values.SetItem(i, value);
+    }
 
-    row->rset  = rset;
-    row->iRow  = iRow;
+    Row* self = PyObject_NEW(Row, &RowType);
+    if (self == 0)
+        return 0;
 
-    return (PyObject*)row;
+    self->columns = rset->columns;
+    Py_INCREF(self->columns);
+
+    self->values = values.Detach();
+
+    return (PyObject*)self;
 }
 
 static void Row_dealloc(PyObject* self)
 {
     Row* row = reinterpret_cast<Row*>(self);
-    Py_DECREF(row->rset);
+    Py_DECREF(row->columns);
+    Py_DECREF(row->values);
     PyObject_Del(self);
 }
 
-static PyObject* Row_getattro(PyObject* self, PyObject* name)
+inline int ColumnFromName(Row* self, PyObject* name)
+{
+    // Returns the column index from a column name.  Returns -1 if not found.
+
+    for (int i = 0, c = PyTuple_GET_SIZE(self->columns); i < c; i++)
+        if (PyUnicode_Compare(name, PyTuple_GET_ITEM(self->columns, i)) == 0)
+            return i;
+    return -1;
+}
+
+
+static PyObject* Row_getattro(PyObject* o, PyObject* name)
 {
     // Called to handle 'row.colname'.
 
-    Row* row = (Row*)self;
+    Row* self = (Row*)o;
 
-    const char* szName = PyUnicode_AsUTF8(name);
+    if (PyUnicode_Check(name))
+    {
+        int iCol = ColumnFromName(self, name);
+        if (iCol != -1)
+        {
+            PyObject* value = PyTuple_GET_ITEM(self->values, iCol);
+            Py_INCREF(value);
+            return value;
+        }
+    }
 
-    int iCol = PQfnumber(row->rset->result, szName);
-
-    if (iCol == -1)
-        return PyObject_GenericGetAttr((PyObject*)row, name);
-
-    return ConvertValue(row->rset->result, row->iRow, iCol, row->rset->integer_datetimes);
+    return PyObject_GenericGetAttr(o, name);
 }
 
-static Py_ssize_t Row_length(PyObject* self)
+static Py_ssize_t Row_length(PyObject* o)
 {
-    Row* row = (Row*)self;
-    return row->rset->cCols;
+    Row* self = (Row*)o;
+    return PyTuple_GET_SIZE(self->columns);
 }
 
 /*
@@ -66,38 +97,38 @@ static int Row_contains(Row* self, PyObject* el)
 }
 */
 
-static PyObject* Row_item(PyObject* self, Py_ssize_t i)
+static PyObject* Row_item(PyObject* o, Py_ssize_t i)
 {
     // Apparently, negative indexes are handled by magic ;) -- they never make it here.
 
-    Row* row = (Row*)self;
+    Row* self = (Row*)o;
 
-    if (i < 0 || i >= row->rset->cCols)
+    if (i < 0 || i >= PyTuple_GET_SIZE(self->values))
     {
         PyErr_SetString(PyExc_IndexError, "tuple index out of range");
         return NULL;
     }
 
-    return ConvertValue(row->rset->result, row->iRow, i, row->rset->integer_datetimes);
+    PyObject* value = PyTuple_GetItem(self->values, i);
+    Py_INCREF(value);
+    return value;
 }
 
-/*
-static int Row_ass_item(PyObject* o, Py_ssize_t i, PyObject* v)
+static int Row_assign(PyObject* o, Py_ssize_t i, PyObject* v)
 {
     // Implements row[i] = value.
 
     Row* self = (Row*)o;
 
-    if (i < 0 || i >= self->cValues)
+    if (i < 0 || i >= PyTuple_GET_SIZE(self->values))
     {
         PyErr_SetString(PyExc_IndexError, "Row assignment index out of range");
         return -1;
     }
 
-    Py_XDECREF(self->apValues[i]);
+    Py_DECREF(PyTuple_GET_ITEM(self->values, i));
+    PyTuple_SET_ITEM(self->values, i, v);
     Py_INCREF(v);
-    self->apValues[i] = v;
-
     return 0;
 }
 
@@ -106,14 +137,19 @@ static int Row_setattro(PyObject* o, PyObject *name, PyObject* v)
 {
     Row* self = (Row*)o;
 
-    PyObject* index = PyDict_GetItem(self->map_name_to_index, name);
+    int i = ColumnFromName(self, name);
+    if (i == -1)
+    {
+        PyErr_SetString(Error, "Cannot add columns or attributes to a row");
+        return -1;
+    }
 
-    if (index)
-        return Row_ass_item(o, PyNumber_AsSsize_t(index, 0), v);
-
-    return PyObject_GenericSetAttr(o, name, v);
+    Py_DECREF(PyTuple_GET_ITEM(self->values, i));
+    PyTuple_SET_ITEM(self->values, i, v);
+    Py_INCREF(v);
+    return 0;
 }
-*/
+
 
 /*
 static PyObject* Row_repr(PyObject* o)
@@ -130,7 +166,7 @@ static PyObject* Row_repr(PyObject* o)
     {
         if (i > 0)
             list.AppendAndIncrement(strComma);
-        list.AppendAndBorrow(PyObject_Repr(self->apValues[i]));
+        list.AppendAndBorrow(PyObject_Repr(self->values[i]));
     }
 
     if (self->cValues == 1)
@@ -178,8 +214,8 @@ static PyObject* Row_richcompare(PyObject* olhs, PyObject* orhs, int op)
     }
 
     for (Py_ssize_t i = 0, c = lhs->cValues; i < c; i++)
-        if (!PyObject_RichCompareBool(lhs->apValues[i], rhs->apValues[i], Py_EQ))
-            return PyObject_RichCompare(lhs->apValues[i], rhs->apValues[i], op);
+        if (!PyObject_RichCompareBool(lhs->values[i], rhs->values[i], Py_EQ))
+            return PyObject_RichCompare(lhs->values[i], rhs->values[i], op);
 
     // All items are equal.
     switch (op)
@@ -214,8 +250,8 @@ static PyObject* Row_subscript(PyObject* o, PyObject* key)
         if (i < 0 || i >= row->cValues)
             return PyErr_Format(PyExc_IndexError, "row index out of range index=%d len=%d", (int)i, (int)row->cValues);
 
-        Py_INCREF(row->apValues[i]);
-        return row->apValues[i];
+        Py_INCREF(row->values[i]);
+        return row->values[i];
     }
 
     if (PySlice_Check(key))
@@ -243,8 +279,8 @@ static PyObject* Row_subscript(PyObject* o, PyObject* key)
             return 0;
         for (Py_ssize_t i = 0, index = start; i < slicelength; i++, index += step)
         {
-            PyTuple_SET_ITEM(result.Get(), i, row->apValues[index]);
-            Py_INCREF(row->apValues[index]);
+            PyTuple_SET_ITEM(result.Get(), i, row->values[index]);
+            Py_INCREF(row->values[index]);
         }
         return result.Detach();
     }
@@ -268,7 +304,7 @@ static PyObject* Row_repr(PyObject* o)
     {
         if (i > 0)
             list.AppendAndIncrement(strComma);
-        list.AppendAndBorrow(PyObject_Repr(self->apValues[i]));
+        list.AppendAndBorrow(PyObject_Repr(self->values[i]));
     }
 
     if (self->cValues == 1)
@@ -284,14 +320,30 @@ static PyObject* Row_repr(PyObject* o)
 
 */
 
+static PyMemberDef Row_members[] = 
+{
+    { (char*)"columns", T_OBJECT_EX, offsetof(Row, columns), 0, (char*)"tuple of column names" },
+    { 0 }
+};
+
+static PyObject* Row_concat(PyObject* lhs, PyObject* rhs)
+{
+    PyErr_SetString(Error, "Row objects cannot be concatenated");
+    return 0;
+}
+static PyObject* Row_repeat(PyObject *o, Py_ssize_t count)
+{
+    PyErr_SetString(Error, "Row objects cannot be repeated");
+    return 0;
+}
 static PySequenceMethods row_as_sequence =
 {
     Row_length,                 // sq_length
-    0,                          // sq_concat
-    0,                          // sq_repeat
+    Row_concat,                 // sq_concat
+    Row_repeat,                 // sq_repeat
     Row_item,                   // sq_item
     0,                          // was_sq_slice
-    0, //Row_ass_item,               // sq_ass_item
+    Row_assign,                 // sq_ass_item
     0,                          // sq_ass_slice
     0, //Row_contains,               // sq_contains
 };
@@ -309,18 +361,6 @@ static PyMethodDef Row_methods[] =
 {
     // { "__reduce__", (PyCFunction)Row_reduce, METH_NOARGS, 0 },
     { 0, 0, 0, 0 }
-};
-
-static PyObject* Row_getcolumns(Row* self, void* closure)
-{
-    UNUSED(closure);
-    return ResultSet_GetColumns(self->rset);
-}
-
-static PyGetSetDef Row_getsetters[] = 
-{
-    { (char*)"columns", (getter)Row_getcolumns, 0, (char*)"tuple of column names", 0 },
-    { 0 }
 };
 
 
@@ -368,7 +408,7 @@ PyTypeObject RowType =
     0,                                                      // tp_call
     0,                                                      // tp_str
     Row_getattro,                                           // tp_getattro
-    0, // Row_setattro,                                           // tp_setattro
+    Row_setattro,                                           // tp_setattro
     0,                                                      // tp_as_buffer
     Py_TPFLAGS_DEFAULT,                                     // tp_flags
     row_doc,                                                // tp_doc
@@ -379,8 +419,8 @@ PyTypeObject RowType =
     0,                                                      // tp_iter
     0,                                                      // tp_iternext
     Row_methods,                                            // tp_methods
-    0, // Row_members,                                            // tp_members
-    Row_getsetters,                                         // tp_getset
+    Row_members,                                            // tp_members
+    0, // Row_getsetters,                                         // tp_getset
     0,                                                      // tp_base
     0,                                                      // tp_dict
     0,                                                      // tp_descr_get

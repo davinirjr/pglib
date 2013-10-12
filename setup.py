@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys, os, re
+import subprocess
 from os.path import join, abspath, dirname, exists
 from distutils.core import setup, Command, Extension
 from distutils.command.build_ext import build_ext
@@ -101,12 +102,16 @@ def _get_settings():
     elif sys.platform == 'darwin':
 
         # If on Mavericks, the standard include directories are not in /usr/include.
+        # Need to figure out how to do this automatically.  Look into:
+        # * xcode-select
+        # * xcodebuild 
         
         settings['include_dirs'] = [
-            '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/include'
+            '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/include',
+            # subprocess.check_output(['pg_config', '--includedir']).decode('utf-8') 
         ]
 
-        settings['library_dirs'] = [ '/Library/PostgreSQL/9.2/lib/' ]
+        settings['library_dirs'] = [ subprocess.check_output(['pg_config', '--libdir']).decode('utf-8') ]
         settings['libraries']    = ['pq']
 
         # Apple has decided they won't maintain the iODBC system in OS/X and has added deprecation warnings in 10.8.

@@ -145,9 +145,9 @@ class PGTestCase(unittest.TestCase):
 
     def test_row_one(self):
         self.cnxn.execute("create table t1(a int)")
-        self.cnxn.execute("insert into t1 values (1)")
+        self.cnxn.execute("insert into t1 values (2)")
         value = self.cnxn.row("select a from t1")
-        self.assertEqual(value[0], 1)
+        self.assertEqual(value[0], 2)
 
     def test_row_many(self):
         self.cnxn.execute("create table t1(a int)")
@@ -439,6 +439,17 @@ class PGTestCase(unittest.TestCase):
         self.cnxn.execute("insert into t1 values (1,1,1)")
         row = self.cnxn.row("select a,b,c from t1")
         self.assertEqual(row.columns, ('a', 'b', 'c'))
+
+    def test_assignment(self):
+        """
+        Ensure columns can be assigned to rows.
+        """
+        self.cnxn.execute("create table t1(a int)")
+        self.cnxn.execute("insert into t1 values (1)")
+        row = self.cnxn.row("select a from t1")
+        self.assertEqual(row.a, 1)
+        row.a = 2
+        self.assertEqual(row.a, 2)
 
     def test_row_failure(self):
         """

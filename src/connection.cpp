@@ -128,8 +128,7 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
 
     case PGRES_COPY_OUT:
     case PGRES_COPY_IN:
-    // Missing from Linux 9.2 header files?  Will have to look at again.
-    // case PGRES_COPY_BOTH:
+    case PGRES_COPY_BOTH:
         Py_RETURN_NONE;
 
     case PGRES_BAD_RESPONSE:

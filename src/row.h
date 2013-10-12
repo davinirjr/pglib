@@ -7,8 +7,12 @@ struct ResultSet;
 struct Row
 {
     PyObject_HEAD
-    ResultSet* rset;
-    int iRow;
+
+    PyObject* columns;
+    // The column names, shared with the ResultSet.
+
+    PyObject* values;
+    // The values converted to Python objects.
 };
 
 extern PyTypeObject RowType;

@@ -4,6 +4,26 @@
 #include "connection.h"
 #include "row.h"
 
+static PyObject* AllocateColumns(PGresult* result)
+{
+    int count = PQnfields(result);
+
+    Tuple cols(count);
+    if (!cols)
+        return 0;
+
+    for (int i = 0; i < count; i++)
+    {
+        const char* szName = PQfname(result, i);
+        PyObject* col = PyUnicode_DecodeUTF8(szName, strlen(szName), 0);
+        if (col == 0)
+            return 0;
+        cols.SetItem(i, col);
+    }
+
+    return cols.Detach();
+}
+
 PyObject* ResultSet_New(Connection* cnxn, PGresult* result)
 {
     ResultSet* rset = PyObject_NEW(ResultSet, &ResultSetType);
@@ -14,11 +34,15 @@ PyObject* ResultSet_New(Connection* cnxn, PGresult* result)
     }
 
     rset->result            = result;
-    rset->cRows             = PQntuples(result);
-    rset->cCols             = PQnfields(result);
     rset->cFetched          = 0;
+    rset->columns           = AllocateColumns(result);
     rset->integer_datetimes = cnxn->integer_datetimes;
-    rset->columns           = 0;
+
+    if (PyErr_Occurred())
+    {
+        Py_DECREF(rset);
+        rset = 0;
+    }
 
     return reinterpret_cast<PyObject*>(rset);
 }
@@ -32,6 +56,7 @@ static void ResultSet_dealloc(PyObject* self)
     PyObject_Del(self);
 }
 
+
 static PyObject* ResultSet_iter(PyObject* self)
 {
     // You can iterate over results multiple times, but not at the same time.
@@ -41,73 +66,46 @@ static PyObject* ResultSet_iter(PyObject* self)
     return self;
 }
 
-static PyObject* ResultSet_iternext(PyObject* self)
+static PyObject* ResultSet_iternext(PyObject* o)
 {
-    ResultSet* rset = reinterpret_cast<ResultSet*>(self);
+    ResultSet* self = reinterpret_cast<ResultSet*>(o);
 
-    if (rset->cFetched >= PQntuples(rset->result))
-    {
-        PyErr_SetNone(PyExc_StopIteration);
+    if (self->cFetched >= PQntuples(self->result))
         return 0;
-    }
 
-    return Row_New(rset, rset->cFetched++);
+    return Row_New(self, self->cFetched++);
 }
 
 static Py_ssize_t ResultSet_length(PyObject* self)
 {
     ResultSet* rset = (ResultSet*)self;
-    return rset->cRows;
+    return PQntuples(rset->result);
 }
 
-static PyObject* ResultSet_item(PyObject* self, Py_ssize_t i)
+static PyObject* ResultSet_item(PyObject* o, Py_ssize_t i)
 {
     // Apparently, negative indexes are handled by magic ;) -- they never make it here.
 
-    ResultSet* rset = (ResultSet*)self;
+    ResultSet* self = (ResultSet*)o;
 
-    if (i < 0 || i >= rset->cRows)
-        return PyErr_Format(PyExc_IndexError, "Index %d out of range.  ResultSet has %d rows", (int)i, (int)rset->cRows);
+    if (i < 0 || i >= PQntuples(self->result))
+        return PyErr_Format(PyExc_IndexError, "Index %d out of range.  ResultSet has %d rows", (int)i, (int)PQntuples(self->result));
 
-    return Row_New(rset, i);
+    return Row_New(self, i);
 }
 
 static PyObject* ResultSet_getcolumns(ResultSet* self, void* closure)
 {
     UNUSED(closure);
 
-    if (self->cCols == 0)
-    {
-        Py_RETURN_NONE;
-    }
-
     if (self->columns == 0)
     {
-        Tuple cols(self->cCols);
-        if (!cols)
-            return 0;
-
-        for (int i = 0; i < self->cCols; i++)
-        {
-            const char* szName = PQfname(self->result, i);
-            PyObject* col = PyUnicode_DecodeUTF8(szName, strlen(szName), 0);
-            if (col == 0)
-                return 0;
-            cols.SetItem(i, col);
-        }
-
-        self->columns = cols.Detach();
+        Py_RETURN_NONE;
     }
 
     Py_INCREF(self->columns);
     return self->columns;
 }
-
-PyObject* ResultSet_GetColumns(ResultSet* rset)
-{
-    return ResultSet_getcolumns(rset, 0);
-}
-
 
 static PyGetSetDef ResultSet_getsetters[] = 
 {
