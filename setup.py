@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import sys, os, re
-import subprocess
+import subprocess, sysconfig
 from os.path import join, abspath, dirname, exists
 from distutils.core import setup, Command, Extension
 from distutils.command.build_ext import build_ext
+
 
 def get_version():
     """
@@ -44,6 +45,39 @@ def get_version():
         prerelease = '-rc%02d' % parts[-1]
 
     return '.'.join(str(part) for part in parts[:3]) + prerelease
+
+
+def _get_osx_sdkpath():
+    """
+    Use xcodebuild to find the latest installed OS X SDK and return the path to it.
+    """
+    # The output is in blank line separated sections.  Find the section for the latest OS/X SDK
+    # and get the Path entry.
+
+    output = subprocess.check_output(['xcodebuild', '-version', '-sdk']).strip().decode('utf-8')
+
+    highest = (0,0)
+    path    = None
+
+    # MacOSX10.8.sdk - OS X 10.8 (macosx10.8)
+    resection = re.compile('^.*- OS X (\d+)\.(\d+)')
+    repath = re.compile('^Path: ([^\n]+)', re.MULTILINE)
+
+    for section in output.split('\n\n'):
+        match = resection.match(section)
+        if not match:
+            continue
+
+        version = tuple(int(g) for g in match.groups())
+        if version > highest:
+            highest = version
+            path = repath.search(section).group(1)
+
+
+    if highest == (0,0):
+        sys.exit('No OS X SDKs installed?  xcodebuild returned {!r}'.format(output))
+
+    return path
 
 
 def getoutput(cmd):
@@ -101,24 +135,27 @@ def _get_settings():
 
     elif sys.platform == 'darwin':
 
-        # If on Mavericks, the standard include directories are not in /usr/include.
-        # Need to figure out how to do this automatically.  Look into:
-        # * xcode-select
-        # * xcodebuild 
-        
+        # Apple is not making it easy for non-Xcode builds.  We'll always build with the latest
+        # SDK we can find but we'll set the version we are targeting to the same one that
+        # Python was built with.
+
+        sdkpath = _get_osx_sdkpath()
+
         settings['include_dirs'] = [
-            '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/usr/include',
-            # subprocess.check_output(['pg_config', '--includedir']).decode('utf-8') 
+            join(sdkpath, 'usr', 'include'),
+            abspath(dirname(sysconfig.get_config_h_filename().strip())),
+            subprocess.check_output(['pg_config', '--includedir']).strip().decode('utf-8')
         ]
 
-        settings['library_dirs'] = [ subprocess.check_output(['pg_config', '--libdir']).decode('utf-8') ]
+        settings['library_dirs'] = [ subprocess.check_output(['pg_config', '--libdir']).strip().decode('utf-8') ]
         settings['libraries']    = ['pq']
 
         # Apple has decided they won't maintain the iODBC system in OS/X and has added deprecation warnings in 10.8.
-        # For now target 10.7 to eliminate the warnings.
+        # For now target 10.7 to eliminate the warnings.  Perhaps we should set this to the same version
         settings['define_macros'].append( ('MAC_OS_X_VERSION_10_7',) )
 
         settings['extra_compile_args'] = ['-Wall']
+
 
     else:
         # Other posix-like: Linux, Solaris, etc.
