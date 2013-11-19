@@ -420,6 +420,25 @@ class PGTestCase(unittest.TestCase):
     # Miscellaneous
     #
 
+    def test_cnxn_status(self):
+        # I don't know how to make a bad status, so we'll just ensure the attribute exists
+        # and is true.
+        self.assertTrue(self.cnxn.status)
+
+    def test_txn_status(self):
+        self.assertEqual(self.cnxn.transaction_status, pglib.PQTRANS_IDLE)
+        self.cnxn.execute("begin")
+        self.assertEqual(self.cnxn.transaction_status, pglib.PQTRANS_INTRANS)
+        try:
+            self.cnxn.execute("drop table bogus")
+        except:
+            pass
+        self.assertEqual(self.cnxn.transaction_status, pglib.PQTRANS_INERROR)
+
+        self.cnxn.execute("rollback")
+        self.assertEqual(self.cnxn.transaction_status, pglib.PQTRANS_IDLE)
+
+
     def test_uuid(self):
         import uuid
         value = uuid.UUID('4bfe4344-e7f2-41c3-ab88-1aecd79abd12')
@@ -476,6 +495,7 @@ class PGTestCase(unittest.TestCase):
         except pglib.Error as ex:
             msg = str(ex)
             assert '[42703]' in msg, "msg={!r}".format(msg)
+
 
     def test_null_param(self):
         # At one point, inserting a NULL parameter followed by a non-NULL parameter caused a segfault.

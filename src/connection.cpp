@@ -323,11 +323,27 @@ static PyObject* Connection_client_encoding(PyObject* self, void* closure)
     return PyUnicode_DecodeUTF8(sz, strlen(sz), 0);
 }
 
+static PyObject* Connection_status(PyObject* self, void* closure)
+{
+    UNUSED(closure);
+    Connection* cnxn = (Connection*)self;
+    return PyBool_FromLong(PQstatus(cnxn->pgconn) == CONNECTION_OK);
+}
+
+static PyObject* Connection_transaction_status(PyObject* self, void* closure)
+{
+    UNUSED(closure);
+    Connection* cnxn = (Connection*)self;
+    return PyLong_FromLong(PQtransactionStatus(cnxn->pgconn));
+}
+
 static PyGetSetDef Connection_getset[] = {
-    { (char*)"server_version",   (getter)Connection_server_version,   0, (char*)"The server version", 0 },
-    { (char*)"protocol_version", (getter)Connection_protocol_version, 0, (char*)"The protocol version", 0 },
-    { (char*)"server_encoding",  (getter)Connection_server_encoding,  0, (char*)0, 0 },
-    { (char*)"client_encoding",  (getter)Connection_client_encoding,  0, (char*)0, 0 },
+    { (char*)"server_version",     (getter)Connection_server_version,     0, (char*)"The server version", 0 },
+    { (char*)"protocol_version",   (getter)Connection_protocol_version,   0, (char*)"The protocol version", 0 },
+    { (char*)"server_encoding",    (getter)Connection_server_encoding,    0, (char*)0, 0 },
+    { (char*)"client_encoding",    (getter)Connection_client_encoding,    0, (char*)0, 0 },
+    { (char*)"status",             (getter)Connection_status,             0, (char*)"True if status is CONNECTION_OK, False otherwise", 0 },
+    { (char*)"transaction_status", (getter)Connection_transaction_status, 0, (char*)"Returns PQtransactionStatus constants", 0 },
     { 0 }
 };
 

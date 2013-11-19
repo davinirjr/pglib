@@ -9,3 +9,4 @@ TAGS
 tmp
 pglib.egg-info
 /pglib.so
+venv

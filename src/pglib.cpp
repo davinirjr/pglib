@@ -90,7 +90,7 @@ static struct PyModuleDef moduledef = {
     0,                          // m_free
 };
 
-static bool InitConstants()
+static bool InitStringConstants()
 {
     strComma = PyUnicode_FromString(",");
     strParens = PyUnicode_FromString("()");
@@ -106,6 +106,21 @@ static bool InitConstants()
         strEmpty
     );
 }
+
+struct ConstantDef
+{
+    const char* szName;
+    int value;
+};
+
+#define MAKECONST(v) { #v, v }
+static const ConstantDef aConstants[] = {
+    MAKECONST(PQTRANS_IDLE),
+    MAKECONST(PQTRANS_ACTIVE),
+    MAKECONST(PQTRANS_INTRANS),
+    MAKECONST(PQTRANS_INERROR),
+    MAKECONST(PQTRANS_UNKNOWN),
+};
 
 PyMODINIT_FUNC PyInit_pglib()
 {
@@ -126,7 +141,7 @@ PyMODINIT_FUNC PyInit_pglib()
 
     Params_Init();
 
-    if (!InitConstants())
+    if (!InitStringConstants())
         return 0;
 
     Error = PyErr_NewException("pglib.Error", 0, 0);
@@ -137,6 +152,9 @@ PyMODINIT_FUNC PyInit_pglib()
     
     if (!module)
         return 0;
+
+    for (unsigned int i = 0; i < _countof(aConstants); i++)
+        PyModule_AddIntConstant(module, (char*)aConstants[i].szName, aConstants[i].value);
 
     const char* szVersion = TOSTRING(PGLIB_VERSION);
     PyModule_AddStringConstant(module, "version", (char*)szVersion);
