@@ -7,9 +7,8 @@
 #include "juliandate.h"
 #include "byteswap.h"
 
-#if defined(__APPLE__)
-#else
-#include <arpa/inet.h>
+#ifdef _MSC_VER
+#include <Winsock2.h>
 #endif
 
 static bool BindBool(Connection* cnxn, Params& params, PyObject* param);

@@ -130,8 +130,12 @@ def _get_settings():
                                           ]
 
         if '--debug' in sys.argv:
+            # TODO: The build command already has debug. Pass it in.
             sys.argv.remove('--debug')
             settings['extra_compile_args'].extend('/Od /Ge /GS /GZ /RTC1 /Wp64 /Yd'.split())
+
+        settings['libraries'] = ['libpq', 'Ws2_32']
+
 
     elif sys.platform == 'darwin':
 

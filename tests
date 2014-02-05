@@ -508,7 +508,7 @@ class PGTestCase(unittest.TestCase):
 
 def _check_conninfo(value):
     value = value.strip()
-    if not re.match(r'^\w+=\w+$', value):
+    if not re.match(r'^\w+=.+$', value):
         raise ArgumentTypeError('conninfo must be key=value ("{}")'.format(value))
     return value
 
@@ -529,7 +529,7 @@ def main():
     }
 
     for part in args.conninfo:
-        match = re.match(r'^(\w+)=(\w+)$', part)
+        match = re.match(r'^(\w+)=(.+)$', part)
         conninfo[match.group(1)] = match.group(2)
 
     conninfo = ' '.join('{}={}'.format(key, value) for (key, value) in conninfo.items())
