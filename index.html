@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="pglib : A simple Python 3.3+ library for PostgreSQL based on libpq" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>pglib</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/mkleehammer/pglib">View on GitHub</a>
+
+          <h1 id="project_title">pglib</h1>
+          <h2 id="project_tagline">A simple Python 3.3+ library for PostgreSQL based on libpq</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/mkleehammer/pglib/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/mkleehammer/pglib/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h2>
+<a name="welcome-to-glib" class="anchor" href="#welcome-to-glib"><span class="octicon octicon-link"></span></a>Welcome to glib</h2>
+
+<p>pglib is a Python 3.3+ library that is as Pythonic and convenient as possible that maps directly to the PostgreSQL client interface known as "libpq".</p>
+
+<p>It was written for use on OS/X and Linux, but is now being tested for 64-bit Python on Windows.</p>
+
+<p>It is a C-extension so you will need the PostgreSQL header and library files to build!</p>
+
+<h3>
+<a name="building" class="anchor" href="#building"><span class="octicon octicon-link"></span></a>Building</h3>
+
+<p>To build, download the source from github.com and use the setup.py file.</p>
+
+<h4>
+<a name="osx-and-linux" class="anchor" href="#osx-and-linux"><span class="octicon octicon-link"></span></a>OS/X and Linux</h4>
+
+<p>On OS/X and Linux:</p>
+
+<pre><code>$ git clone https://github.com/mkleehammer/pglib.git
+$ cd pglib
+$ python3 setup.py build
+$ sudo python3 setup.py install
+</code></pre>
+
+<p>If you have build problems, make sure you have the PostgreSQL headers.  On OS/X, you will need Xcode installed <em>and</em> the command line tools downloaded (in Xcode preferences on the Downloads tab).</p>
+
+<h3>
+<a name="windows-64-bit" class="anchor" href="#windows-64-bit"><span class="octicon octicon-link"></span></a>Windows 64-bit</h3>
+
+<p>Building on Windows uses the same steps, but configuring the environment is not as easy.  You will need:</p>
+
+<ul>
+<li>Visual Studio 10 for Python 3.3</li>
+<li>The PostgreSQL headers and libraries</li>
+<li>A setup.cfg file to allow setup.py to locate the headers and libraries.</li>
+<li>libpq.dll must be in the path to import</li>
+</ul><p>The version of Visual Studio must be that same as the one used to build your version of Python.  Python 3.3 was built with Visual Studio 10.  Python's built-in distutils knows how to find this.</p>
+
+<p>The PostgreSQL files can come from an installed version or by downloading a <a href="http://www.enterprisedb.com/products-services-training/pgbindownload">zipped version</a>.  There will be 3 directories you will need to find: pgsql\bin, pgsql\lib, and pgsql\include.</p>
+
+<p>Unfortunately the PostgreSQL headers include the Python 2.7 header files which you do not want used.  So, you must configure the include files to specifically include your Python header files <em>then</em> the PostgreSQL header files.  The Python header files are in the 'include' directory under the Python installation.  </p>
+
+<p>Put these directories into a setup.cfg file in the pglib directory like so:</p>
+
+<pre><code>[build_ext]
+include_dirs=c:\bin\python33-64\include;c:\bin\pgsql\include
+library-dirs=c:\bin\pgsql\lib
+</code></pre>
+
+<p>Obviously update the directories to match yours.</p>
+
+<p>Once this is done, run: <code>python setup.py build install</code>.  Make sure that the version of Python in your path is 3.3.</p>
+
+<p>The end result is a pglib.pyd file that can be imported using <code>import pglib</code>, but it uses the DLL version of pglib.</p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">pglib maintained by <a href="https://github.com/mkleehammer">mkleehammer</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
