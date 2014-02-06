@@ -32,7 +32,7 @@
     <div id="main_content_wrap" class="outer">
       <section id="main_content" class="inner">
         <h2>
-<a name="welcome-to-glib" class="anchor" href="#welcome-to-glib"><span class="octicon octicon-link"></span></a>Welcome to glib</h2>
+<a name="welcome-to-pglib" class="anchor" href="#welcome-to-pglib"><span class="octicon octicon-link"></span></a>Welcome to pglib</h2>
 
 <p>pglib is a Python 3.3+ library that is as Pythonic and convenient as possible that maps directly to the PostgreSQL client interface known as "libpq".</p>
 
@@ -85,7 +85,30 @@ library-dirs=c:\bin\pgsql\lib
 
 <p>Once this is done, run: <code>python setup.py build install</code>.  Make sure that the version of Python in your path is 3.3.</p>
 
-<p>The end result is a pglib.pyd file that can be imported using <code>import pglib</code>, but it uses the DLL version of pglib.</p>
+<p>The end result is a pglib.pyd file that can be imported using <code>import pglib</code>, but it uses the DLL version of glib.</p>
+
+<h1>
+<a name="using-pglib" class="anchor" href="#using-pglib"><span class="octicon octicon-link"></span></a>Using pglib</h1>
+
+<p>pglib exposes <a href="http://www.postgresql.org/docs/9.1/static/libpq.html">libpq</a> API to Python, so it may be helpful to familiarize yourself with it.  At this time only synchronous functions are exported.</p>
+
+<p>pglib will only return columns for datatype that it knows about.  If you need more data types, please open an <a href="https://github.com/mkleehammer/pglib/issues">issue</a>.  There are also plans to introduce converter functions so you can provide your own conversions.  Again, if you need this, please open an issue.</p>
+
+<h2>
+<a name="importing" class="anchor" href="#importing"><span class="octicon octicon-link"></span></a>Importing</h2>
+
+<p>The module name is <code>pglib</code> and importing is as simple as using <code>import pglib</code>.  On Windows the module dynamically links to libpq.dll, so it and all of its dependancies will need to be on the path.</p>
+
+<p>The pglib version is available via the <code>pglib.version</code> string.</p>
+
+<h2>
+<a name="connecting" class="anchor" href="#connecting"><span class="octicon octicon-link"></span></a>Connecting</h2>
+
+<p>The <code>connect</code> function accepts a libpq connection string and passes it to <a href="http://www.postgresql.org/docs/9.1/static/libpq-connect.html#LIBPQ-PQCONNECTDB">PQconnectdb</a> and returns a Connection object.</p>
+
+<pre><code>import pglib
+cnxn = pglib.connect("host=localhost dbname=test")
+</code></pre>
       </section>
     </div>
 
