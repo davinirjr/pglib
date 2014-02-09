@@ -420,6 +420,16 @@ class PGTestCase(unittest.TestCase):
     # Miscellaneous
     #
 
+    def test_repr(self):
+        """
+        For debugging purposes, printing a row should produce the same output as a tuple.
+        """
+        self.cnxn.execute("create table t1(a varchar(20), b int)")
+        self.cnxn.execute("insert into t1 values ('one', 1)")
+        row = self.cnxn.row("select a,b from t1")
+        t = ('one', 1)
+        self.assertEqual(str(row), str(t))
+
     def test_cnxn_status(self):
         # I don't know how to make a bad status, so we'll just ensure the attribute exists
         # and is true.

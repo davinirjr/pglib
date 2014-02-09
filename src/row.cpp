@@ -150,36 +150,12 @@ static int Row_setattro(PyObject* o, PyObject *name, PyObject* v)
     return 0;
 }
 
-
-/*
 static PyObject* Row_repr(PyObject* o)
 {
     Row* self = (Row*)o;
-
-    if (self->cValues == 0)
-        return PyUnicode_FromString("()");
-
-    List list(self->cValues * 2 + 1);
-    list.AppendAndIncrement(strLeftParen);
-
-    for (Py_ssize_t i = 0; i < self->cValues; i++)
-    {
-        if (i > 0)
-            list.AppendAndIncrement(strComma);
-        list.AppendAndBorrow(PyObject_Repr(self->values[i]));
-    }
-
-    if (self->cValues == 1)
-    {
-        // Need a trailing comma: (value,)
-        list.AppendAndIncrement(strComma);
-    }
-
-    list.AppendAndIncrement(strRightParen);
-
-    return list.Join(strEmpty);
+    return PyObject_Repr(self->values);
 }
-*/
+
 /*
 static PyObject* Row_richcompare(PyObject* olhs, PyObject* orhs, int op)
 {
@@ -287,37 +263,6 @@ static PyObject* Row_subscript(PyObject* o, PyObject* key)
 
     return PyErr_Format(PyExc_TypeError, "row indices must be integers, not %.200s", Py_TYPE(key)->tp_name);
 }
-
-static PyObject* Row_repr(PyObject* o)
-{
-    Row* self = (Row*)o;
-
-    if (self->cValues == 0)
-        return PyUnicode_FromString("()");
-
-    List list(self->cValues * 2 + 1);
-
-
-    list.AppendAndIncrement(strLeftParen);
-
-    for (Py_ssize_t i = 0; i < self->cValues; i++)
-    {
-        if (i > 0)
-            list.AppendAndIncrement(strComma);
-        list.AppendAndBorrow(PyObject_Repr(self->values[i]));
-    }
-
-    if (self->cValues == 1)
-    {
-        // Need a trailing comma: (value,)
-        list.AppendAndIncrement(strComma);
-    }
-
-    list.AppendAndIncrement(strRightParen);
-
-    return list.Join(strEmpty);
-}
-
 */
 
 static PyMemberDef Row_members[] = 
@@ -400,7 +345,7 @@ PyTypeObject RowType =
     0,                                                      // tp_getattr
     0,                                                      // tp_setattr
     0,                                                      // tp_compare
-    0, //Row_repr,                                               // tp_repr
+    Row_repr,                                               // tp_repr
     0,                                                      // tp_as_number
     &row_as_sequence,                                       // tp_as_sequence
     0, // &row_as_mapping,                                        // tp_as_mapping
