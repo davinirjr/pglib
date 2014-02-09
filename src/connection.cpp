@@ -98,6 +98,29 @@ static PGresult* internal_execute(PyObject* self, PyObject* args)
     return result;
 }
 
+static const char doc_script[] = "Connection.script(sql) --> None\n\n"
+    "Executes a script which can contain multiple statements separated by semicolons.";
+static PyObject* Connection_script(PyObject* self, PyObject* args)
+{
+    PyObject* pScript;
+    if (!PyArg_ParseTuple(args, "U", &pScript))
+        return 0;
+
+    Connection* cnxn = (Connection*)self;
+    ResultHolder result = PQexec(cnxn->pgconn, PyUnicode_AsUTF8(pScript));
+    if (result == 0)
+        return 0;
+
+    switch (PQresultStatus(result)) {
+    case PGRES_BAD_RESPONSE:
+    case PGRES_NONFATAL_ERROR:
+    case PGRES_FATAL_ERROR:
+        return SetResultError(result.Detach());
+
+    default:
+        Py_RETURN_NONE;
+    }
+}
 
 static PyObject* Connection_execute(PyObject* self, PyObject* args)
 {
@@ -134,6 +157,7 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
     case PGRES_BAD_RESPONSE:
     case PGRES_NONFATAL_ERROR:
     case PGRES_FATAL_ERROR:
+    default:
         // Fall through and return an error.
         break;
     }
@@ -353,7 +377,8 @@ static struct PyMethodDef Connection_methods[] =
     { "row",     Connection_row,     METH_VARARGS, 0 },
     { "scalar",  Connection_scalar,  METH_VARARGS, 0 },
     { "trace",   Connection_trace,   METH_VARARGS, 0 },
-    { "reset",   Connection_reset,   METH_NOARGS, 0 },
+    { "reset",   Connection_reset,   METH_NOARGS,  0 },
+    { "script",  Connection_script,  METH_VARARGS, doc_script },
     { 0, 0, 0, 0 }
 };
 

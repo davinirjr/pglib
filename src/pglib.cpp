@@ -161,6 +161,8 @@ PyMODINIT_FUNC PyInit_pglib()
 
     PyModule_AddObject(module, "Error", Error);
 
+    PyModule_AddObject(module, "Connection", (PyObject*)&ConnectionType);
+    Py_INCREF((PyObject*)&ConnectionType);
     PyModule_AddObject(module, "Row", (PyObject*)&RowType);
     Py_INCREF((PyObject*)&RowType);
     PyModule_AddObject(module, "ResultSet", (PyObject*)&ResultSetType);

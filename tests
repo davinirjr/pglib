@@ -134,6 +134,17 @@ class PGTestCase(unittest.TestCase):
     def test_version(self):
         self.assertEquals(3, len(pglib.version.split('.'))) # 1.3.1 etc.
 
+    def test_script(self):
+        """
+        Ensure a script (multiple statements) can be executed.
+        """
+        sql = """
+        select 1;
+        select 2;
+        select 3;
+        """
+        self.cnxn.script(sql)
+
     #
     # row
     #
