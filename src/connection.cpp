@@ -122,6 +122,135 @@ static PyObject* Connection_script(PyObject* self, PyObject* args)
     }
 }
 
+const char* doc_copy_from_csv = 
+    "Connection.copy_from_csv(table, source, header=0) --> None\n"
+    "\n"
+    "Executes a COPY FROM command.\n"
+    "\n"
+    "table\n"
+    "  The table to copy to.  This can also contain the columns to populate.\n"
+    "\n"
+    "source\n"
+    "  The data to copy from.  This can be a string formatted as CSV or a file-like\n"
+    "  object (anything with a read method that returns a string or bytes object).\n"
+    "\n"
+    "Examples:\n"
+    "  cnxn.copy_from_csv('t1', open('test.csv'), header=1)\n"
+    "  cnxn.copy_from_csv('t1(a,b,c)', open('test.csv'), header=1)\n"
+    "  cnxn.copy_from_csv('t1', gzip.open('test.csv'), header=1)\n"
+    "  cnxn.copy_from_csv('t1', \"1,'one'\\n2,'two'\")\n";
+
+static PyObject* Connection_copy_from_csv(PyObject* self, PyObject* args, PyObject* kwargs)
+{
+    static const char *kwlist[] = { "table", "source", "header", 0 };
+
+    PyObject* table;
+    PyObject* source;
+    int header = 0;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "UO|p", (char**)kwlist, &table, &source, &header))
+        return 0;
+
+    char header_token[] = "header";
+    if (header == 0)
+        header_token[0] = 0;
+    PyObject* sql = PyUnicode_FromFormat("copy %U from stdin with csv %s", table, header_token);
+
+    // If source is a string (Unicode), store the UTF-encoded value in buffer. If a byte
+    // object, store directly in buffer.  Otherwise, buffer will be zero and `source` must be
+    // an object with a read method (e.g. file).
+    const char* buffer = 0;
+    Py_ssize_t buffer_size = 0;
+    PyObject* read_method = 0;
+
+    if (PyUnicode_Check(source))
+    {
+        buffer = PyUnicode_AsUTF8AndSize(source, &buffer_size);
+        if (buffer == 0)
+            return 0;
+    }
+    else
+    {
+        if (!PyObject_HasAttrString(source, "read"))
+            return PyErr_Format(Error, "CSV source must be a string right now");
+        read_method = PyObject_GetAttrString(source, "read");
+    }
+
+    Connection* cnxn = (Connection*)self;
+    const char* szSQL = PyUnicode_AsUTF8(sql);
+    ResultHolder result;
+    Py_BEGIN_ALLOW_THREADS
+    result = PQexec(cnxn->pgconn, szSQL);
+    Py_END_ALLOW_THREADS
+
+    if (result == 0)
+        return 0;
+
+    switch (PQresultStatus(result)) {
+    case PGRES_COPY_IN:
+        // This is what we are expecting.
+        break;
+
+    case PGRES_BAD_RESPONSE:
+    case PGRES_NONFATAL_ERROR:
+    case PGRES_FATAL_ERROR:
+        return SetResultError(result.Detach());
+
+    default:
+        return PyErr_Format(Error, "Result was not PGRES_COPY_IN: %d", (int)PQresultStatus(result));
+    }
+
+    if (buffer != 0)
+    {
+        int copyStatus = 0;
+        Py_BEGIN_ALLOW_THREADS
+        copyStatus = PQputCopyData(cnxn->pgconn, buffer, (int)buffer_size);
+        Py_END_ALLOW_THREADS
+        if (copyStatus != 1)
+            return SetConnectionError(cnxn);
+    }
+    else
+    {
+        Object read_args(Py_BuildValue("(l)", 20));
+        if (read_args == 0)
+            return 0;
+
+        for (;;)
+        {
+            Object s(PyObject_CallObject(read_method, read_args));
+            if (s == 0)
+                return 0;
+            if (PyBytes_Check(s))
+            {
+                buffer = PyBytes_AS_STRING(s.Get());
+                buffer_size = PyBytes_GET_SIZE(s.Get());
+            }
+            else if (PyUnicode_Check(s.Get()))
+            {
+                buffer = PyUnicode_AsUTF8AndSize(s.Get(), &buffer_size);
+            }
+            else
+            {
+                return PyErr_Format(Error, "Result of reading is not a bytes object: %R", s.Get());
+            }
+            if (buffer == 0)
+                return 0;
+            if (buffer_size == 0)
+                break;
+            int copyStatus = 0;
+            Py_BEGIN_ALLOW_THREADS
+            copyStatus = PQputCopyData(cnxn->pgconn, buffer, (int)buffer_size);
+            Py_END_ALLOW_THREADS
+            if (copyStatus != 1)
+                return SetConnectionError(cnxn);
+        }
+    }
+
+    if (PQputCopyEnd(cnxn->pgconn, 0) != 1)
+        return SetConnectionError(cnxn);
+
+    Py_RETURN_NONE;
+}
+
 static PyObject* Connection_execute(PyObject* self, PyObject* args)
 {
     Connection* cnxn = (Connection*)self;
@@ -144,7 +273,7 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
             Py_RETURN_NONE;
         return PyLong_FromLong(atoi(sz));
     }
-        
+
     case PGRES_EMPTY_QUERY:
         // This means an empty string was passed, but we check that already so we should never get here.
         Py_RETURN_NONE;
@@ -379,6 +508,7 @@ static struct PyMethodDef Connection_methods[] =
     { "trace",   Connection_trace,   METH_VARARGS, 0 },
     { "reset",   Connection_reset,   METH_NOARGS,  0 },
     { "script",  Connection_script,  METH_VARARGS, doc_script },
+    { "copy_from_csv", (PyCFunction) Connection_copy_from_csv, METH_VARARGS | METH_KEYWORDS, doc_copy_from_csv },
     { 0, 0, 0, 0 }
 };
 

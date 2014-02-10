@@ -1,6 +1,7 @@
 
 #include "pglib.h"
 #include "errors.h"
+#include "connection.h"
 
 struct ResultErrorField
 {
@@ -24,6 +25,13 @@ static const ResultErrorField errorFields[] =
     { "line",              PG_DIAG_SOURCE_LINE,        1 },
     { "function",          PG_DIAG_SOURCE_FUNCTION,    0 }
 };
+
+PyObject* SetConnectionError(Connection* cnxn)
+{
+    const char* szMessage = PQerrorMessage(cnxn->pgconn);
+    PyErr_SetString(Error, szMessage);
+    return 0;
+}
 
 PyObject* SetResultError(PGresult* r)
 {

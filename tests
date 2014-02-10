@@ -146,6 +146,49 @@ class PGTestCase(unittest.TestCase):
         self.cnxn.script(sql)
 
     #
+    # copy
+    #
+
+    def test_copy_csv(self):
+        self.cnxn.execute("create table t1(a int, b varchar(20))")
+        self.cnxn.copy_from_csv("t1", open('test-noheader.csv'))
+        self.assertEqual(2, self.cnxn.scalar("select count(*) from t1"))
+        row = self.cnxn.row("select a,b from t1 where a=2")
+        self.assertEqual(row.a, 2)
+        self.assertEqual(row.b, 'two')
+
+    def test_copy_csv_header(self):
+        self.cnxn.execute("create table t1(a int, b varchar(20))")
+        self.cnxn.copy_from_csv("t1", open('test-header.csv'), header=True)
+        self.assertEqual(2, self.cnxn.scalar("select count(*) from t1"))
+        row = self.cnxn.row("select a,b from t1 where a=2")
+        self.assertEqual(row.a, 2)
+        self.assertEqual(row.b, 'two')
+
+    def test_copy_csv_gzip(self):
+        import gzip
+        self.cnxn.execute("create table t1(a int, b varchar(20))")
+        self.cnxn.copy_from_csv("t1", gzip.open('test-header.csv.gz'), header=True)
+        self.assertEqual(2, self.cnxn.scalar("select count(*) from t1"))
+        row = self.cnxn.row("select a,b from t1 where a=2")
+        self.assertEqual(row.a, 2)
+        self.assertEqual(row.b, 'two')
+
+    def test_copy_csv_string(self):
+        self.cnxn.execute("create table t1(a int, b varchar(20))")
+        self.cnxn.copy_from_csv("t1", '1,"one"\n2,"two"')
+        row = self.cnxn.row("select a,b from t1 where a=2")
+        self.assertEqual(row.a, 2)
+        self.assertEqual(row.b, 'two')
+
+    def test_copy_csv_string_cols(self):
+        self.cnxn.execute("create table t1(a int, b varchar(20))")
+        self.cnxn.copy_from_csv("t1(b, a)", '"one",1\n"two",2') # reverse order of cols
+        row = self.cnxn.row("select a,b from t1 where a=2")
+        self.assertEqual(row.a, 2)
+        self.assertEqual(row.b, 'two')
+
+    #
     # row
     #
 
