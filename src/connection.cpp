@@ -171,7 +171,7 @@ static PyObject* Connection_copy_from_csv(PyObject* self, PyObject* args, PyObje
     else
     {
         if (!PyObject_HasAttrString(source, "read"))
-            return PyErr_Format(Error, "CSV source must be a string right now");
+            return PyErr_Format(Error, "CSV source must be a string or file-like object.");
         read_method = PyObject_GetAttrString(source, "read");
     }
 
