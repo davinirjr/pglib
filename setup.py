@@ -150,12 +150,9 @@ def _get_settings():
             abspath(dirname(sysconfig.get_config_h_filename().strip())),
             subprocess.check_output(['pg_config', '--includedir']).strip().decode('utf-8')
         ]
-
         settings['library_dirs'] = [ subprocess.check_output(['pg_config', '--libdir']).strip().decode('utf-8') ]
         settings['libraries']    = ['pq']
 
-        # Apple has decided they won't maintain the iODBC system in OS/X and has added deprecation warnings in 10.8.
-        # For now target 10.7 to eliminate the warnings.  Perhaps we should set this to the same version
         settings['define_macros'].append( ('MAC_OS_X_VERSION_10_7',) )
 
         settings['extra_compile_args'] = ['-Wall']
@@ -164,19 +161,12 @@ def _get_settings():
     else:
         # Other posix-like: Linux, Solaris, etc.
 
-        settings['include_dirs'] = [
-            '/usr/pgsql-9.2/include'
-        ]
-
-        settings['library_dirs'] = [ '/usr/pgsql-9.2/lib/' ]
+        settings['include_dirs'] = [ subprocess.check_output(['pg_config', '--includedir']).strip().decode('utf-8') ]
+        settings['library_dirs'] = [ subprocess.check_output(['pg_config', '--libdir']).strip().decode('utf-8') ]
         settings['libraries']    = ['pq']
-
 
         # Python functions take a lot of 'char *' that really should be const.  gcc complains about this *a lot*
         settings['extra_compile_args'] = ['-Wno-write-strings']
-
-        # What is the proper way to detect iODBC, MyODBC, unixODBC, etc.?
-        # settings['libraries'].append('odbc')
 
     return settings
 
