@@ -51,43 +51,54 @@
 
 <p>pglib is a Python 3.3+ module for working with PostgreSQL databases.  It is a C extension
 that exposes the <a href="http://www.postgresql.org/docs/9.3/static/libpq.html">libpq</a> API.
-It is designed to be small, fast, and as convenient as possible that API to Python.</p>
+It is designed to be small, fast, and as convenient as possible.</p>
 
 <h2>
 <a name="quick-start" class="anchor" href="#quick-start"><span class="octicon octicon-link"></span></a>Quick Start</h2>
+
+<p>While this documentation is being written, the best place to learn about pglib is its
+<a href="https://github.com/mkleehammer/pglib/blob/master/tests">unit tests file</a> which has
+examples of every feature.</p>
 
 <h3>
 <a name="installing" class="anchor" href="#installing"><span class="octicon octicon-link"></span></a>Installing</h3>
 
 <p><a href="https://github.com/mkleehammer/pglib/releases">Pre-built binaries</a> are
-available for OS/X and Windows 64-bit Python.  For other operating systems see
+available for OS/X and Windows 64-bit Python.  To build your own binary see
 <a href="building.html">building pglib</a>.</p>
 
 <h3>
 <a name="connecting" class="anchor" href="#connecting"><span class="octicon octicon-link"></span></a>Connecting</h3>
+
+To connect, pass a <a href="http://www.postgresql.org/docs/9.3/static/libpq-connect.html#LIBPQ-CONNSTRING">
+libpq connection string</a> to the pglib.connect function.
 
 <pre>
 import pglib
 cnxn = pglib.connect('host=localhost dbname=test')
 </pre>
 
-<p>See the <a href="http://www.postgresql.org/docs/9.3/static/libpq-connect.html#LIBPQ-CONNSTRING">
-libpq connection string</a> reference.</p>
-
 <h3>
 <a name="selection-basics" class="anchor" href="#selection-basics"><span class="octicon octicon-link"></span></a>Selection Basics</h3>
 
 <p>Connection.execute accepts a SQL statement and optional parameters and returns a ResultSet.
-A ResultSet is a collection of Row objects.  The result set that can be indexed into or used as
-an iterator.</p>
+If the SQL was a select statement, ResultSet.columns will be a tuple containing the resulting
+column names and act as a collection of the resulting Row objects.  The Row objects can be
+accessed by indexing into the ResultSet or iterating over it.</p> <pre> rset =
+cnxn.execute("select id, name from users")
 
-<pre>
-rset = cnxn.execute("select id, name from users")
-print('count:', len(rows))
-print('first:', row[0])
+print('columns:', rset.columns) # ('id', 'name')
+
+print('count:', len(rset))
+print('first:', rset[0])
+
 for row in rset:
     print(row)
 </pre>
+
+<p>The design of libpq, PostgreSQL's client library, means that all row data is kept in memory
+while the ResultSet exists.  This means that result sets can be iterated over multiple times.
+It also means large result sets should be discarded as soon as possible.</p>
 
 <p>Row objects are similar to tuples, but they also allow access to columns by name.</p>
 
@@ -114,19 +125,32 @@ row = cnxn.row("select count(*) as cnt from users")
 print(row.cnt)
 </pre>
 
-<p>The Connection.scalar method is another convenience method that returns the first column of
-the first row.  If there are no results it returns None.</p>
+<p>The Connection.scalar method, another convenience method, returns the first column of the
+first row.  If there are no results it returns None.</p>
 
 <pre>
 count = cnxn.scalar("select count(*) from users")
 print(count)
 </pre>
 
+<p>Each row is a Python sequence, so it can be used in many places that a tuple or list can.
+To convert the values into a tuple use <code>tuple(row)</code>.</p>
+
+<p>Finally, to make it convenient to pass a Row around to functions, the columns are also available
+from the row object.  Note that a column actually named 'columns' will override this.</p>
+
+<pre>
+print('columns:', row.columns)
+
+# Convert to dictionary:
+d = dict(zip(row.columns, row))
+</pre>
+
 <h3>
 <a name="parameters" class="anchor" href="#parameters"><span class="octicon octicon-link"></span></a>Parameters</h3>
     
-<p>PostgreSQL supports parameters using $1, $2, etc. as a place holder in the SQL. You
-provide the values for the question marks by passing them after the SQL</p>
+<p>PostgreSQL supports parameters using $1, $2, etc. as a place holder in the SQL.  Values for these
+are passed after the SQL.  The first parameter passed is used for $1, the second for $2, etc.</p>
 
 <pre>
 cnxn.execute("""
@@ -134,13 +158,16 @@ cnxn.execute("""
                from users
               where id > $1
                     and bill_overdue = $2
-             """, 100, 1)
+             """, 100, 1)  # 100 -> $1, 1 -> $2
 </pre>
 
-<p>This is safer than putting the values into the string because the parameters are passed to
-the database separately, protecting against SQL injection attacks.</p>
+<p>Parameters are always passed to the server separately from the SQL statement and pglib never
+modifies the SQL passed to it.  You should <em>always</em> pass parameters separately to
+protect against <a href="http://en.wikipedia.org/wiki/SQL_injection">SQL injection attacks</a>.</p>
 
-<p>Right now there is a limited set of data types accepted.  Open an
+</p>
+
+<p>Right now there is a limited set of data types accepted.  Feel free to open an
 <a href="https://github.com/mkleehammer/pglib/issues">issue</a> to request new ones.</p>
 
 <table>
