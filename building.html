@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="pglib : A simple Python 3.3+ library for PostgreSQL based on libpq" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/toc.css">
+
+    <title>Building pglib</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/mkleehammer/pglib">View on GitHub</a>
+
+          <h1 id="project_title">pglib</h1>
+          <h2 id="project_tagline">A simple Python 3.3+ library for PostgreSQL based on libpq</h2>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+
+      <ul class="toc">
+        <li><a href="#building">Building pglib</a></li>
+        <li>
+          <ul class="toc">
+            <li><a href="#osx">OS/X</a></li>
+            <li><a href="#linux">Linux</a></li>
+            <li><a href="#windows">Windows</a></li>
+          </ul>
+        </li>
+      </ul>
+
+<h2>
+<a name="building" class="anchor" href="#building"><span class="octicon octicon-link"></span></a>Building pglib</h2>
+
+<p>Before you build you may want to see if there is a binary available.  Binaries for OS/X and
+Windows 64-bit Python are often made available as 
+<a href="https://github.com/mkleehammer/pglib/releases">releases</a>.</p>
+
+<p>Otherwise you'll need</p>
+<ul>
+<li>Python 3.3 or greater</li>
+<li>the pglib source</li>
+<li>the compiler Python was built with</li>
+<li>PostgreSQL header files and lib files</li>
+</ul>
+
+<p>Once these installed and paths are configured correctly, building is (supposed to be) as
+simple as running <code>python3 setup.py build</code> in the pglib source directory.</p>
+
+<h3><a name="osx" class="anchor" href="#osx"><span class="octicon octicon-link"></span></a>OS/X</h3>
+
+<p>Install PostgreSQL.  The <a href="http://postgresapp.com">Postgres.app</a>
+installation is particularly convenient on OS/X.</p>
+
+<p>Ensure that <code>pg_config</code> is in the path so setup.py can use it to determine the
+include and lib directories.  If you are using Postgres.app, you can add the following to your
+~/.bashrc file:</p>
+
+<pre>
+export PATH=$PATH:/Applications/Postgres.app/Contents/MacOS/bin
+</pre>
+
+<p>You will also need Xcode installed <i>and</i> you'll need to download the Xcode command line
+tools. Do this in the Xcode preferences on the Downloads tab.  The setup script will add the
+latest SDK directory to the header and library directories.</p>
+
+<p>If pglib builds successfully, you can install it into your global Python site directory using
+<code>sudo python3 setup.py install</code> or into your venv directory using
+<code>python3 setup.py install</code>.</p>
+
+<h3><a name="linux" class="anchor" href="#linux"><span class="octicon octicon-link"></span></a>Linux</h3>
+
+<p>You will need some header files and pg_config.  The binary package names differ by
+distribution.</p>
+
+<table>
+<thead>
+<tr>
+  <th>Component</th>
+  <th>RedHat</th>
+  <th>Debian</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Python development</td>
+  <td>python-devel</td>
+  <td>python-dev</td>
+</tr>
+<tr>
+  <td>PostgreSQL development</td>
+  <td>postgresql-devel</td>
+  <td>postgres-dev</td>
+</tr>
+<tr>
+  <td>pg_config</td>
+  <td>postgresql-devel</td>
+  <td>postgres-dev</td>
+</tr>
+</tbody>
+</table>
+
+<p>Make sure pg_config is in your path before building.  On RedHat-based systems, you'll
+find it in /usr/pgsql-<em>version</em>/bin.</p>
+
+<p>Once you have the necessary files and a compiler installed, download the pglib source and
+run <code>python3 setup.py build</code> in the pglib source directory.  Install into your site
+directory using <code>sudo python3 setup.py install</code> or into your venv directory using
+<code>python3 setup.py install</code>.</p>
+
+<h3><a name="windows" class="anchor" href="#windows"><span class="octicon octicon-link"></span></a>Windows</h3>
+
+<p>This library has only been tested with 64-bit Python, not 32-bit Python on 64-bit Windows.
+It <em>may</em> work but it won't be tested until someone requests it.</p>
+
+<p>There are two complications on Windows not present on the other operating systems:</p>
+<ul>
+<li>The PostgreSQL header files have an old copy of the Python header files.</li>
+<li>The resulting library uses libpq.dll which must be in the path to import.</li>
+</ul>
+
+<p>First you will need Visual Studio 10 if building for Python 3.3.  The setup.py scripts always
+look for the version of Visual Studio they were built with.</p>
+
+<p>The PostgreSQL files can come from an installed version or by downloading a 
+<a href="http://www.enterprisedb.com/products-services-training/pgbindownload">zipped version</a>.
+There will be 3 directories you will need: pgsql\bin, pgsql\lib, and pgsql\include.</p>
+
+<p>Unfortunately, as of PostgreSQL 9.3, the PostgreSQL download includes the Python 2.7 header
+files.  If these are used you will get lots of errors about undefined items.  To fix this, you
+must manually force setup.py to include the Python 3.3 include files <em>before</em> including
+the PostgreSQL include files.  The Python header files are in the 'include' directory under the
+Python installation.</p>
+
+<p>To do this, create a setup.cfg file in the pglib directory and configure it with your
+directories:</p>
+
+<pre><code>[build_ext]
+include_dirs=c:\bin\python33-64\include;c:\bin\pgsql\include
+library-dirs=c:\bin\pgsql\lib
+</code></pre>
+
+<p>It is very important that the Python include directory is before the pgsql include directory.</p>
+
+<p>Once this is done, make sure Python 3.3 is in your path and run: <code>python setup.py
+build install</code>.  If successful, a pglib.pyd file will have been created.</p>
+
+<p>Since pglib dynamically links to libpq.dll, you will need the DLL in your path and the DLLs
+that it needs.  This means you will need both pgsql\lib and pgsql\bin in your path.</p>
+
+
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">pglib maintained by <a href="https://github.com/mkleehammer">mkleehammer</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>

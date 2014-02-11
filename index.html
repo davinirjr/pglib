@@ -7,6 +7,7 @@
     <meta name="description" content="pglib : A simple Python 3.3+ library for PostgreSQL based on libpq" />
 
     <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/toc.css">
 
     <title>pglib</title>
   </head>
@@ -31,84 +32,173 @@
     <!-- MAIN CONTENT -->
     <div id="main_content_wrap" class="outer">
       <section id="main_content" class="inner">
-        <h2>
+
+      <ul class="toc">
+        <li><a href="#welcome-to-pglib">Welcome to pglib</a></li>
+        <li><a href="#quick-start">Quick Start</a></li>
+        <li>
+          <ul class="toc">
+            <li><a href="#installing">Installing</a></li>
+            <li><a href="#connecting">Connecting</a></li>
+            <li><a href="#selection-basics">Selection Basics</a></li>
+            <li><a href="#parameters">Parameters</a></li>
+          </ul>
+        </li>
+      </ul>
+
+<h2>
 <a name="welcome-to-pglib" class="anchor" href="#welcome-to-pglib"><span class="octicon octicon-link"></span></a>Welcome to pglib</h2>
 
-<p>pglib is a Python 3.3+ library that is as Pythonic and convenient as possible that maps directly to the PostgreSQL client interface known as "libpq".</p>
-
-<p>It was written for use on OS/X and Linux, but is now being tested for 64-bit Python on Windows.</p>
-
-<p>It is a C-extension so you will need the PostgreSQL header and library files to build!</p>
-
-<h3>
-<a name="building" class="anchor" href="#building"><span class="octicon octicon-link"></span></a>Building</h3>
-
-<p>To build, download the source from github.com and use the setup.py file.</p>
-
-<h4>
-<a name="osx-and-linux" class="anchor" href="#osx-and-linux"><span class="octicon octicon-link"></span></a>OS/X and Linux</h4>
-
-<p>On OS/X and Linux:</p>
-
-<pre><code>$ git clone https://github.com/mkleehammer/pglib.git
-$ cd pglib
-$ python3 setup.py build
-$ sudo python3 setup.py install
-</code></pre>
-
-<p>If you have build problems, make sure you have the PostgreSQL headers.  On OS/X, you will need Xcode installed <em>and</em> the command line tools downloaded (in Xcode preferences on the Downloads tab).</p>
-
-<h3>
-<a name="windows-64-bit" class="anchor" href="#windows-64-bit"><span class="octicon octicon-link"></span></a>Windows 64-bit</h3>
-
-<p>Building on Windows uses the same steps, but configuring the environment is not as easy.  You will need:</p>
-
-<ul>
-<li>Visual Studio 10 for Python 3.3</li>
-<li>The PostgreSQL headers and libraries</li>
-<li>A setup.cfg file to allow setup.py to locate the headers and libraries.</li>
-<li>libpq.dll must be in the path to import</li>
-</ul><p>The version of Visual Studio must be that same as the one used to build your version of Python.  Python 3.3 was built with Visual Studio 10.  Python's built-in distutils knows how to find this.</p>
-
-<p>The PostgreSQL files can come from an installed version or by downloading a <a href="http://www.enterprisedb.com/products-services-training/pgbindownload">zipped version</a>.  There will be 3 directories you will need to find: pgsql\bin, pgsql\lib, and pgsql\include.</p>
-
-<p>Unfortunately the PostgreSQL headers include the Python 2.7 header files which you do not want used.  So, you must configure the include files to specifically include your Python header files <em>then</em> the PostgreSQL header files.  The Python header files are in the 'include' directory under the Python installation.  </p>
-
-<p>Put these directories into a setup.cfg file in the pglib directory like so:</p>
-
-<pre><code>[build_ext]
-include_dirs=c:\bin\python33-64\include;c:\bin\pgsql\include
-library-dirs=c:\bin\pgsql\lib
-</code></pre>
-
-<p>Obviously update the directories to match yours.</p>
-
-<p>Once this is done, run: <code>python setup.py build install</code>.  Make sure that the version of Python in your path is 3.3.</p>
-
-<p>The end result is a pglib.pyd file that can be imported using <code>import pglib</code>, but it uses the DLL version of glib.</p>
-
-<h1>
-<a name="using-pglib" class="anchor" href="#using-pglib"><span class="octicon octicon-link"></span></a>Using pglib</h1>
-
-<p>pglib exposes <a href="http://www.postgresql.org/docs/9.1/static/libpq.html">libpq</a> API to Python, so it may be helpful to familiarize yourself with it.  At this time only synchronous functions are exported.</p>
-
-<p>pglib will only return columns for datatype that it knows about.  If you need more data types, please open an <a href="https://github.com/mkleehammer/pglib/issues">issue</a>.  There are also plans to introduce converter functions so you can provide your own conversions.  Again, if you need this, please open an issue.</p>
+<p>pglib is a Python 3.3+ module for working with PostgreSQL databases.  It is a C extension
+that exposes the <a href="http://www.postgresql.org/docs/9.3/static/libpq.html">libpq</a> API.
+It is designed to be small, fast, and as convenient as possible that API to Python.</p>
 
 <h2>
-<a name="importing" class="anchor" href="#importing"><span class="octicon octicon-link"></span></a>Importing</h2>
+<a name="quick-start" class="anchor" href="#quick-start"><span class="octicon octicon-link"></span></a>Quick Start</h2>
 
-<p>The module name is <code>pglib</code> and importing is as simple as using <code>import pglib</code>.  On Windows the module dynamically links to libpq.dll, so it and all of its dependancies will need to be on the path.</p>
+<h3>
+<a name="installing" class="anchor" href="#installing"><span class="octicon octicon-link"></span></a>Installing</h3>
 
-<p>The pglib version is available via the <code>pglib.version</code> string.</p>
+<p><a href="https://github.com/mkleehammer/pglib/releases">Pre-built binaries</a> are
+available for OS/X and Windows 64-bit Python.  For other operating systems see
+<a href="building.html">building pglib</a>.</p>
 
-<h2>
-<a name="connecting" class="anchor" href="#connecting"><span class="octicon octicon-link"></span></a>Connecting</h2>
+<h3>
+<a name="connecting" class="anchor" href="#connecting"><span class="octicon octicon-link"></span></a>Connecting</h3>
 
-<p>The <code>connect</code> function accepts a libpq connection string and passes it to <a href="http://www.postgresql.org/docs/9.1/static/libpq-connect.html#LIBPQ-PQCONNECTDB">PQconnectdb</a> and returns a Connection object.</p>
+<pre>
+import pglib
+cnxn = pglib.connect('host=localhost dbname=test')
+</pre>
 
-<pre><code>import pglib
-cnxn = pglib.connect("host=localhost dbname=test")
-</code></pre>
+<p>See the <a href="http://www.postgresql.org/docs/9.3/static/libpq-connect.html#LIBPQ-CONNSTRING">
+libpq connection string</a> reference.</p>
+
+<h3>
+<a name="selection-basics" class="anchor" href="#selection-basics"><span class="octicon octicon-link"></span></a>Selection Basics</h3>
+
+<p>Connection.execute accepts a SQL statement and optional parameters and returns a ResultSet.
+A ResultSet is a collection of Row objects.  The result set that can be indexed into or used as
+an iterator.</p>
+
+<pre>
+rset = cnxn.execute("select id, name from users")
+print('count:', len(rows))
+print('first:', row[0])
+for row in rset:
+    print(row)
+</pre>
+
+<p>Row objects are similar to tuples, but they also allow access to columns by name.</p>
+
+<pre>
+rset = cnxn.execute("select id, name from users limit 1")
+row = rset[0]
+print('id:', row[0]) # access id by column index
+print('id:', row.id) # access id by column name
+</pre>
+
+<p>The SQL 'as' keyword makes it easy to set the name.</p>
+
+<pre>
+rset = cnxn.execute("select count(*) as cnt from users")
+row = rset[0]
+print(row.cnt)
+</pre>
+
+<p>The Connection.row method is a convenience method that returns the first result Row.  If
+there are no results it returns None.</p>
+
+<pre>
+row = cnxn.row("select count(*) as cnt from users")
+print(row.cnt)
+</pre>
+
+<p>The Connection.scalar method is another convenience method that returns the first column of
+the first row.  If there are no results it returns None.</p>
+
+<pre>
+count = cnxn.scalar("select count(*) from users")
+print(count)
+</pre>
+
+<h3>
+<a name="parameters" class="anchor" href="#parameters"><span class="octicon octicon-link"></span></a>Parameters</h3>
+    
+<p>PostgreSQL supports parameters using $1, $2, etc. as a place holder in the SQL. You
+provide the values for the question marks by passing them after the SQL</p>
+
+<pre>
+cnxn.execute("""
+             select id, name
+               from users
+              where id > $1
+                    and bill_overdue = $2
+             """, 100, 1)
+</pre>
+
+<p>This is safer than putting the values into the string because the parameters are passed to
+the database separately, protecting against SQL injection attacks.</p>
+
+<p>Right now there is a limited set of data types accepted.  Open an
+<a href="https://github.com/mkleehammer/pglib/issues">issue</a> to request new ones.</p>
+
+<table>
+  <thead>
+    <tr><th>Python Type</th><th>SQL Type</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>None</td>
+      <td>NULL</td>
+    </tr>
+    <tr>
+      <td>bool</td>
+      <td>Boolean</td>
+    </tr>
+    <tr>
+      <td>bytes</td>
+      <td>binary</td>
+    </tr>
+    <tr>
+      <td>bytearray</td>
+      <td>binary</td>
+    </tr>
+    <tr>
+      <td>datetime.date</td>
+      <td>date</td>
+    </tr>
+    <tr>
+      <td>datetime.datetime</td>
+      <td>timestamp</td>
+    </tr>
+    <tr>
+      <td>datetime.time</td>
+      <td>time</td>
+    </tr>
+    <tr>
+      <td>decimal.Decimal</td>
+      <td>numeric</td>
+    </tr>
+    <tr>
+      <td>float</td>
+      <td>float8</td>
+    </tr>
+    <tr>
+      <td>int</td>
+      <td>int64 or numeric</td>
+    </tr>
+    <tr>
+      <td>str</td>
+      <td>text encoded as UTF-8</td>
+    </tr>
+    <tr>
+      <td>uuid.UUID</td>
+      <td>uuid</td>
+    </tr>
+  </tbody>
+</table>
+
       </section>
     </div>
 
@@ -120,7 +210,6 @@ cnxn = pglib.connect("host=localhost dbname=test")
       </footer>
     </div>
 
-    
 
   </body>
 </html>
