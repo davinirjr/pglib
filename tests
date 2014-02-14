@@ -570,6 +570,34 @@ class PGTestCase(unittest.TestCase):
         self.cnxn.execute("insert into t1(a) values ($1)", 'testing')
         self.cnxn.execute("update t1 set a=$1, b=$2", None, 1)
 
+    def test_txn_commit(self):
+        self.cnxn.execute("create table t1(a int)")
+        other = pglib.connect(self.conninfo)
+        other.begin()
+        other.execute("insert into t1 values (1)")
+        other.commit()
+        count = self.cnxn.scalar("select count(*) from t1")
+        self.assertEqual(count, 1)
+
+    def test_txn_failure(self):
+        self.cnxn.execute("create table t1(a int)")
+        other = pglib.connect(self.conninfo)
+        other.begin()
+        other.execute("insert into t1 values (1)")
+        other = None # should roll back
+        count = self.cnxn.scalar("select count(*) from t1")
+        self.assertEqual(count, 0)
+
+    def test_txn_rollback(self):
+        self.cnxn.execute("create table t1(a int)")
+        other = pglib.connect(self.conninfo)
+        other.begin()
+        other.execute("insert into t1 values (1)")
+        other.rollback()
+        count = self.cnxn.scalar("select count(*) from t1")
+        self.assertEqual(count, 0)
+
+
 def _check_conninfo(value):
     value = value.strip()
     if not re.match(r'^\w+=.+$', value):

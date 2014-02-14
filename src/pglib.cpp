@@ -51,7 +51,8 @@ static PyObject* mod_defaults(PyObject* self, PyObject* args)
     return dict.Detach();
 }
 
-static char connect_doc[] = "";
+static char connect_doc[] = 
+"connect(connection_string) --> Connection";
 
 static PyObject* mod_connect(PyObject* self, PyObject* args, PyObject* kwargs)
 {
@@ -64,15 +65,14 @@ static PyObject* mod_connect(PyObject* self, PyObject* args, PyObject* kwargs)
     return Connection_New(conninfo);
 }
 
-static PyObject* mod_test(PyObject* self, PyObject* args)
-{
-    return 0;
-}
-
+// static PyObject* mod_test(PyObject* self, PyObject* args)
+// {
+//     return 0;
+// }
 
 static PyMethodDef pglib_methods[] =
 {
-    { "test",  (PyCFunction)mod_test,  METH_VARARGS, 0 },
+    // { "test",  (PyCFunction)mod_test,  METH_VARARGS, 0 },
     { "connect",  (PyCFunction)mod_connect,  METH_VARARGS, connect_doc },
     { "defaults", (PyCFunction)mod_defaults, METH_NOARGS,  doc_defaults },
     { 0, 0, 0, 0 }

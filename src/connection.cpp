@@ -7,6 +7,29 @@
 #include "getdata.h"
 #include "row.h"
 
+struct ConstantDef
+{
+    const char* szName;
+    int value;
+};
+
+#define MAKECONST(v) { #v, v }
+static const ConstantDef aTxnFlags[] = {
+    MAKECONST(PQTRANS_IDLE),
+    MAKECONST(PQTRANS_ACTIVE),
+    MAKECONST(PQTRANS_INTRANS),
+    MAKECONST(PQTRANS_INERROR),
+    MAKECONST(PQTRANS_UNKNOWN),
+};
+
+const char* NameFromTxnFlag(int flag)
+{
+    for (size_t i = 0; i < _countof(aTxnFlags); i++)
+        if (aTxnFlags[i].value == flag)
+            return aTxnFlags[i].szName;
+    return "invalid";
+}
+
 static void notice_receiver(void *arg, const PGresult* res)
 {
 }
@@ -422,6 +445,96 @@ static PyObject* Connection_scalar(PyObject* self, PyObject* args)
     return ConvertValue(result, 0, 0, cnxn->integer_datetimes);
 }
 
+static const char doc_begin[] = "Connection.begin() --> None\n\n"
+    "Begins a transaction.  Raises an error if already in a transaction.";
+
+static PyObject* Connection_begin(PyObject* self, PyObject* args)
+{
+    UNUSED(args);
+    Connection* cnxn = (Connection*)self;
+    
+    PGTransactionStatusType txnstatus;
+    ExecStatusType status = PGRES_COMMAND_OK;
+    ResultHolder result;
+
+    Py_BEGIN_ALLOW_THREADS
+    txnstatus = PQtransactionStatus(cnxn->pgconn);
+    if (txnstatus == PQTRANS_IDLE)
+    {
+        result = PQexec(cnxn->pgconn, "BEGIN");
+        status = PQresultStatus(result);
+    }
+    Py_END_ALLOW_THREADS
+
+    if (txnstatus != PQTRANS_IDLE)
+        return PyErr_Format(Error, "Connection transaction status is not idle: %s", NameFromTxnFlag(txnstatus));
+
+    if (status != PGRES_COMMAND_OK)
+        return SetResultError(result);
+
+    Py_RETURN_NONE;
+}
+
+static const char doc_commit[] = "Connection.commit() --> None\n\n"
+    "Commits a transaction if one is active.  It is not an error to call outside of a transaction.";
+
+static PyObject* Connection_commit(PyObject* self, PyObject* args)
+{
+    UNUSED(args);
+    Connection* cnxn = (Connection*)self;
+    
+    PGTransactionStatusType txnstatus;
+    ExecStatusType status = PGRES_COMMAND_OK;
+    ResultHolder result;
+
+    Py_BEGIN_ALLOW_THREADS
+    txnstatus = PQtransactionStatus(cnxn->pgconn);
+    if (txnstatus == PQTRANS_INTRANS)
+    {
+        result = PQexec(cnxn->pgconn, "COMMIT");
+        status = PQresultStatus(result);
+    }
+    Py_END_ALLOW_THREADS
+
+    if (txnstatus != PQTRANS_IDLE && txnstatus != PQTRANS_INTRANS)
+        return PyErr_Format(Error, "Connection transaction status is invalid: %s", NameFromTxnFlag(txnstatus));
+
+    if (status != PGRES_COMMAND_OK)
+        return SetResultError(result);
+
+    Py_RETURN_NONE;
+}
+
+static const char doc_rollback[] = "Connection.rollback() --> None\n\n"
+    "Rolls back a transaction if one is active.  It is not an error to call outside of a transaction.";
+
+static PyObject* Connection_rollback(PyObject* self, PyObject* args)
+{
+    UNUSED(args);
+    Connection* cnxn = (Connection*)self;
+    
+    PGTransactionStatusType txnstatus;
+    ExecStatusType status = PGRES_COMMAND_OK;
+    ResultHolder result;
+
+    Py_BEGIN_ALLOW_THREADS
+    txnstatus = PQtransactionStatus(cnxn->pgconn);
+    if (txnstatus == PQTRANS_INTRANS)
+    {
+        result = PQexec(cnxn->pgconn, "ROLLBACK");
+        status = PQresultStatus(result);
+    }
+    Py_END_ALLOW_THREADS
+
+    if (txnstatus != PQTRANS_IDLE && txnstatus != PQTRANS_INTRANS)
+        return PyErr_Format(Error, "Connection transaction status is invalid: %s", NameFromTxnFlag(txnstatus));
+
+    if (status != PGRES_COMMAND_OK)
+        return SetResultError(result);
+
+    Py_RETURN_NONE;
+}
+
 static void Connection_dealloc(PyObject* self)
 {
     Connection* cnxn = (Connection*)self;
@@ -509,6 +622,9 @@ static struct PyMethodDef Connection_methods[] =
     { "reset",   Connection_reset,   METH_NOARGS,  0 },
     { "script",  Connection_script,  METH_VARARGS, doc_script },
     { "copy_from_csv", (PyCFunction) Connection_copy_from_csv, METH_VARARGS | METH_KEYWORDS, doc_copy_from_csv },
+    { "begin",    Connection_begin,   METH_NOARGS, doc_begin },
+    { "commit",   Connection_commit,   METH_NOARGS, doc_commit },
+    { "rollback", Connection_rollback,   METH_NOARGS, doc_rollback },
     { 0, 0, 0, 0 }
 };
 
