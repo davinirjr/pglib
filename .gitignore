@@ -10,3 +10,4 @@ tmp
 pglib.egg-info
 /pglib.so
 venv
+docs/_build
