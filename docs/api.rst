@@ -76,7 +76,9 @@ connection is closed when the Connection object is destroyed.
 
 .. method:: Connection.execute(sql [, param, ...]) --> ResultSet | int | None
 
-   Submits a command to the server and waits for the result.::
+   Submits a command to the server and waits for the result.
+
+   If the command is a select statement, the result will be a :class:`ResultSet`::
 
       rset = cnxn.execute(
                  """
@@ -85,12 +87,17 @@ connection is closed when the Connection object is destroyed.
                   where id > $1
                         and bill_overdue = $2
                  """, 100, 1)  # 100 -> $1, 1 -> $2
+      for row in rset:
+          print('user id=', row.id, 'name=', row.name)
+
+   If the command is an UPDATE or DELETE statement, the result is the number of rows affected::
 
       count = cnxn.execute("delete from articles where expired <= now()")
+      print('Articles deleted:', count)
 
-   If the command was a select statement a :class:`ResultSet` (collection of rows) is returned.
-   If it was an UPDATE or DELETE statement, the number of rows affected is returned.  Otherwise
-   None is returned.
+   Otherwise, None is returned. ::
+
+       cnxn.execute("create table t1(a int)") # returns None
 
    Parameters may be passed as arguments after the SQL statement.  Use $1, $2, etc. as markers
    for these in the SQL.  Parameters must be Python types that pglib can convert to appropriate
@@ -101,10 +108,28 @@ connection is closed when the Connection object is destroyed.
    and pglib *never* modifies the SQL passed to it.  You should *always* pass parameters separately to
    protect against `SQL injection attacks <http://en.wikipedia.org/wiki/SQL_injection>`_.
 
-.. method: Connection.row(sql [, param, ...]) --> Row | None
+.. method:: Connection.row(sql [, param, ...]) --> Row | None
 
-   A convenience method that submits a command returns the first row of the result.  If the
-   result has no rows, None is returned.
+   A convenience method that submits a command and returns the first row of the result.  If the
+   result has no rows, None is returned. ::
+
+       row = cnxn.row("select name from users where id = $1", userid)
+       if row:
+           print('name:', row.name)
+       else:
+           print('There is no user with this id', userid)
+
+
+.. method:: Connection.scalar(sql [, param, ...]) --> value
+
+   A convenience method that submits a command and returns the first column of the first row of
+   the result.  If there are no rows, None is returned. ::
+
+       name = cnxn.scalar("select name from users where id = $1", userid)
+       if name:
+           print('name:', name)
+       else:
+           print('There is no user with this id', userid)
 
 
 ResultSet
@@ -119,6 +144,7 @@ ResultSet
 
    ResultSets can also be iterated over::
 
+     rset = cnxn.execute("select user_id, user_name from users")
      for row in rset:
          print(row)
 
