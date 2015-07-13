@@ -2,7 +2,7 @@
 #ifndef ERRORS_H
 #define ERRORS_H
 
-class Connection;
+struct Connection;
 
 PyObject* SetConnectionError(Connection* cnxn);
 PyObject* SetResultError(PGresult* result);
