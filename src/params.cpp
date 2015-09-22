@@ -61,11 +61,20 @@ Params::Params(int _count)
     count = _count;
     bound = 0;
     
-    types   = (Oid*)  malloc(count * sizeof(Oid));
-    values  = (const char**)malloc(count * sizeof(char*));
-    lengths = (int*)  malloc(count * sizeof(int));
-    formats = (int*)  malloc(count * sizeof(int));
-
+    if (count == 0)
+    {
+        types   = 0;
+        values  = 0;
+        lengths = 0;
+        formats = 0;
+    }
+    else
+    {
+        types   = (Oid*)  malloc(count * sizeof(Oid));
+        values  = (const char**)malloc(count * sizeof(char*));
+        lengths = (int*)  malloc(count * sizeof(int));
+        formats = (int*)  malloc(count * sizeof(int));
+    }
     pool = 0;
 }
 
@@ -140,6 +149,9 @@ char* Params::Allocate(size_t amount)
 bool BindParams(Connection* cnxn, Params& params, PyObject* args)
 {
     // Binds arguments 1-n.  Argument zero is expected to be the SQL statement itself.
+
+    if (params.count == 0)
+        return true;
 
     if (!params.valid())
     {

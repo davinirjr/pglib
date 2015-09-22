@@ -3,6 +3,6 @@
 #define GETDATA_H
 
 bool GetData_Init();
-PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_datetimes);
+PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_datetimes, int format);
 
 #endif // GETDATA_H

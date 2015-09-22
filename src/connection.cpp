@@ -22,6 +22,48 @@ static const ConstantDef aTxnFlags[] = {
     MAKECONST(PQTRANS_UNKNOWN),
 };
 
+enum {
+    REQUIRE_OPEN            = 0x01,
+    REQUIRE_SYNC            = 0x02,
+    REQUIRE_ASYNC           = 0x04,
+    REQUIRE_ASYNC_CONNECTED = 0x08 | REQUIRE_OPEN | REQUIRE_ASYNC,
+};
+
+inline Connection* CastConnection(PyObject* self, int flags=0)
+{
+    // Casts the Python pointer to our Connection structure.  If flags are
+    // passed and any of the requirements are not met, the appropriate exception
+    // is raised and zero is returned.
+
+    Connection* cnxn = (Connection*)self;
+
+    if ((flags & REQUIRE_OPEN) && (!cnxn->pgconn))
+    {
+        SetStringError(Error, "The connection is not open");
+        return 0;
+    }
+
+    if ((flags & REQUIRE_SYNC) && (cnxn->async_status != ASYNC_STATUS_SYNC))
+    {
+        SetStringError(Error, "The connection is not synchronous");
+        return 0;
+    }
+
+    if ((flags & REQUIRE_ASYNC) && (cnxn->async_status == ASYNC_STATUS_SYNC))
+    {
+        SetStringError(Error, "The connection is not async");
+        return 0;
+    }
+
+    if ((flags & REQUIRE_ASYNC_CONNECTED) == REQUIRE_ASYNC_CONNECTED && (cnxn->async_status == ASYNC_STATUS_CONNECTING))
+    {
+        SetStringError(Error, "The async connection has not yet connected");
+        return 0;
+    }
+
+    return cnxn;
+}
+
 const char* NameFromTxnFlag(int flag)
 {
     for (size_t i = 0; i < _countof(aTxnFlags); i++)
@@ -34,37 +76,26 @@ static void notice_receiver(void *arg, const PGresult* res)
 {
 }
 
-PyObject* Connection_New(const char* conninfo)
+PyObject* Connection_New(PGconn* pgconn, bool async)
 {
-    PGconn* pgconn;
-    Py_BEGIN_ALLOW_THREADS
-    pgconn = PQconnectdb(conninfo);
-    Py_END_ALLOW_THREADS
-    if (pgconn == 0)
-        return PyErr_NoMemory();
-
-    if (PQstatus(pgconn) != CONNECTION_OK)
-    {
-        const char* szError = PQerrorMessage(pgconn);
-        PyErr_SetString(Error, szError);
-        Py_BEGIN_ALLOW_THREADS
-        PQfinish(pgconn);
-        Py_END_ALLOW_THREADS
-        return 0;
-    }
-
-    PQsetNoticeReceiver(pgconn, notice_receiver, 0);
-
     Connection* cnxn = PyObject_NEW(Connection, &ConnectionType);
+
     if (cnxn == 0)
     {
         PQfinish(pgconn);
         return 0;
     }
 
+    PQsetNoticeReceiver(pgconn, notice_receiver, 0);
+
     cnxn->pgconn = pgconn;
     cnxn->integer_datetimes = PQparameterStatus(pgconn, "integer_datetimes");
     cnxn->tracefile = 0;
+
+    cnxn->async_status = async ? ASYNC_STATUS_CONNECTING : ASYNC_STATUS_SYNC;
+
+    if (async)
+        PQsetnonblocking(cnxn->pgconn, 1);
 
     return reinterpret_cast<PyObject*>(cnxn);
 }
@@ -89,27 +120,20 @@ static PGresult* internal_execute(PyObject* self, PyObject* args)
         return 0;
     }
 
-    PGresult* result = 0;
-    if (cParams == 0)
-    {
-        result = PQexecParams(cnxn->pgconn, PyUnicode_AsUTF8(pSql),
-                              0, 0, 0, 0, 0,
-                              1); // binary format
-    }
-    else
-    {
-        Params params(cParams);
-        if (!BindParams(cnxn, params, args))
-            return 0;
+    Params params(cParams);
+    if (!BindParams(cnxn, params, args))
+        return 0;
 
-        result = PQexecParams(cnxn->pgconn, PyUnicode_AsUTF8(pSql),
-                              cParams,
-                              params.types,
-                              params.values,
-                              params.lengths,
-                              params.formats,
-                              1); // binary format
-    }
+    PGresult* result;
+    Py_BEGIN_ALLOW_THREADS
+    result = PQexecParams(cnxn->pgconn, PyUnicode_AsUTF8(pSql),
+                          cParams,
+                          params.types,
+                          params.values,
+                          params.lengths,
+                          params.formats,
+                          1); // binary format
+    Py_END_ALLOW_THREADS
 
     if (result == 0)
     {
@@ -123,6 +147,7 @@ static PGresult* internal_execute(PyObject* self, PyObject* args)
 
 static const char doc_script[] = "Connection.script(sql) --> None\n\n"
     "Executes a script which can contain multiple statements separated by semicolons.";
+
 static PyObject* Connection_script(PyObject* self, PyObject* args)
 {
     PyObject* pScript;
@@ -274,13 +299,10 @@ static PyObject* Connection_copy_from_csv(PyObject* self, PyObject* args, PyObje
     Py_RETURN_NONE;
 }
 
-static PyObject* Connection_execute(PyObject* self, PyObject* args)
+static PyObject* ReturnResult(Connection* cnxn, ResultHolder& result)
 {
-    Connection* cnxn = (Connection*)self;
-
-    ResultHolder result = internal_execute(self, args);
-    if (result == 0)
-        return 0;
+    // An internal function for handling a result set so we can share the sync
+    // and async implementations.
 
     ExecStatusType status = PQresultStatus(result);
 
@@ -316,6 +338,17 @@ static PyObject* Connection_execute(PyObject* self, PyObject* args)
 
     // SetResultError will take ownership of `result`.
     return SetResultError(result.Detach());
+}
+
+static PyObject* Connection_execute(PyObject* self, PyObject* args)
+{
+    Connection* cnxn = (Connection*)self;
+
+    ResultHolder result = internal_execute(self, args);
+    if (result == 0)
+        return 0;
+
+    return ReturnResult(cnxn, result);
 }
 
 static PyObject* Connection_row(PyObject* self, PyObject* args)
@@ -442,7 +475,7 @@ static PyObject* Connection_scalar(PyObject* self, PyObject* args)
     if (cRows != 1)
         return PyErr_Format(Error, "scalar query returned %d rows, not 1", cRows);
 
-    return ConvertValue(result, 0, 0, cnxn->integer_datetimes);
+    return ConvertValue(result, 0, 0, cnxn->integer_datetimes, PQfformat(result, 0));
 }
 
 static const char doc_begin[] = "Connection.begin() --> None\n\n"
@@ -596,11 +629,156 @@ static PyObject* Connection_status(PyObject* self, void* closure)
     return PyBool_FromLong(PQstatus(cnxn->pgconn) == CONNECTION_OK);
 }
 
+static PyObject* Connection_socket(PyObject* self, void* closure)
+{
+    UNUSED(closure);
+    Connection* cnxn = CastConnection(self);
+    if (!cnxn->pgconn)
+        return PyLong_FromLong(-1);
+
+    return PyLong_FromLong(PQsocket(cnxn->pgconn));
+}
+
 static PyObject* Connection_transaction_status(PyObject* self, void* closure)
 {
     UNUSED(closure);
     Connection* cnxn = (Connection*)self;
     return PyLong_FromLong(PQtransactionStatus(cnxn->pgconn));
+}
+
+static PyObject* Connection_sendQuery(PyObject* self, PyObject* args)
+{
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC_CONNECTED);
+    if (!cnxn)
+        return 0;
+
+    Py_ssize_t cParams = PyTuple_Size(args) - 1;
+    if (cParams < 0)
+    {
+        PyErr_SetString(PyExc_TypeError, "Expected at least 1 argument (0 given)");
+        return 0;
+    }
+
+    PyObject* pSql = PyTuple_GET_ITEM(args, 0);
+    if (!PyUnicode_Check(pSql))
+    {
+        PyErr_SetString(PyExc_TypeError, "The first argument must be the SQL string.");
+        return 0;
+    }
+
+    int sent;
+
+    Params params(cParams);
+    if (!BindParams(cnxn, params, args))
+        return 0;
+
+    Py_BEGIN_ALLOW_THREADS
+    sent = PQsendQueryParams(cnxn->pgconn, PyUnicode_AsUTF8(pSql),
+                             cParams,
+                             params.types,
+                             params.values,
+                             params.lengths,
+                             params.formats,
+                             1); // binary format
+    Py_END_ALLOW_THREADS
+
+    if (!sent)
+        return SetConnectionError(cnxn->pgconn);
+
+    int result = PQflush(cnxn->pgconn);
+
+    if (result == -1)
+        return SetConnectionError(cnxn->pgconn);
+
+    return PyLong_FromLong(result);
+}
+
+static PyObject* Connection_flush(PyObject* self, PyObject* args)
+{
+    UNUSED(args);
+
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC || REQUIRE_OPEN);
+    if (!cnxn)
+        return 0;
+
+    int result = PQflush(cnxn->pgconn);
+
+    if (result == -1)
+        return SetConnectionError(cnxn->pgconn);
+
+    return PyLong_FromLong(result);
+}
+
+static PyObject* Connection_consumeInput(PyObject* self, PyObject* args)
+{
+    // Consumes input (obviously) and returns True if data is ready to be read
+    // with _getResult and False if data is not ready.  If an error occurs an
+    // exception is raised.
+
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC || REQUIRE_OPEN);
+    if (!cnxn)
+        return 0;
+
+    int result = PQconsumeInput(cnxn->pgconn);
+    if (result == 0)
+        return SetConnectionError(cnxn->pgconn);
+
+    return PyBool_FromLong(PQisBusy(cnxn->pgconn) == 0);
+}
+
+static PyObject* Connection_getResult(PyObject* self, PyObject* args)
+{
+    UNUSED(args);
+
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC || REQUIRE_OPEN);
+    if (!cnxn)
+        return 0;
+
+    ResultHolder result;
+    Py_BEGIN_ALLOW_THREADS
+    result = PQgetResult(cnxn->pgconn);
+    Py_END_ALLOW_THREADS
+
+    if (result.p == 0)
+    {
+        // This is normal and is how libpq tells us we've retrieved all of the
+        // results.
+        PyErr_SetNone(PyExc_StopIteration);
+        return 0;
+    }
+
+    return ReturnResult(cnxn, result);
+}
+
+static PyObject* Connection_connectPoll(PyObject* self, PyObject* args)
+{
+    // A wrapper around PQconnectPoll.
+    //
+    // Returns the polling constants OK, READING, and WRITING.  If an error
+    // occurs it will be raised.
+
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC || REQUIRE_OPEN);
+    if (!cnxn)
+        return 0;
+
+    if (cnxn->async_status != ASYNC_STATUS_CONNECTING)
+        return SetStringError(Error, "Already connected");
+
+    PostgresPollingStatusType status = PQconnectPoll(cnxn->pgconn);
+    if (status == PGRES_POLLING_OK)
+    {
+        cnxn->async_status = ASYNC_STATUS_IDLE;
+    }
+
+    if (status == PGRES_POLLING_READING || status == PGRES_POLLING_WRITING || status == PGRES_POLLING_OK)
+        return PyLong_FromLong(status);
+
+    SetConnectionError(cnxn);
+
+    PQfinish(cnxn->pgconn);
+    cnxn->pgconn = 0;
+
+    return 0;
 }
 
 static PyGetSetDef Connection_getset[] = {
@@ -610,6 +788,7 @@ static PyGetSetDef Connection_getset[] = {
     { (char*)"client_encoding",    (getter)Connection_client_encoding,    0, (char*)0, 0 },
     { (char*)"status",             (getter)Connection_status,             0, (char*)"True if status is CONNECTION_OK, False otherwise", 0 },
     { (char*)"transaction_status", (getter)Connection_transaction_status, 0, (char*)"Returns PQtransactionStatus constants", 0 },
+    { (char*)"socket",             (getter)Connection_socket,             0, (char*)"Returns the socket fileno", 0 },
     { 0 }
 };
 
@@ -625,6 +804,11 @@ static struct PyMethodDef Connection_methods[] =
     { "begin",    Connection_begin,   METH_NOARGS, doc_begin },
     { "commit",   Connection_commit,   METH_NOARGS, doc_commit },
     { "rollback", Connection_rollback,   METH_NOARGS, doc_rollback },
+    { "_connectPoll", Connection_connectPoll, METH_NOARGS, 0 },
+    { "_sendQuery", Connection_sendQuery, METH_VARARGS, 0 },
+    { "_consumeInput", Connection_consumeInput, METH_VARARGS, 0 },
+    { "_getResult", Connection_getResult, METH_VARARGS, 0 },
+    { "_flush", Connection_flush, METH_VARARGS, 0 },
     { 0, 0, 0, 0 }
 };
 

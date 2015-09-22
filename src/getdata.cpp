@@ -1,4 +1,7 @@
 
+// Note: There is code for parsing text responses, but we no longer expect
+// them.
+
 #include "pglib.h"
 #include <datetime.h>
 #include "getdata.h"
@@ -10,11 +13,10 @@
 
 #include "debug.h"
 
-static PyObject* GetCash(const char* p);
-static PyObject* GetDate(const char* p);
-static PyObject* GetTime(const char* p);
-static PyObject* GetNumeric(const char* p, int len);
-static PyObject* GetTimestamp(const char* p, bool integer_datetimes);
+enum {
+    FORMAT_TEXT = 0,
+    FORMAT_BINARY = 1
+};
 
 
 bool GetData_Init()
@@ -54,8 +56,14 @@ struct TempBuffer
 };
 
 
-static PyObject* GetCash(const char* p)
+static PyObject* GetCash(const char* p, int format)
 {
+    if (format == FORMAT_TEXT)
+    {
+        PyErr_SetString(Error, "Invalid result: 'money' data was returned as text instead of binary.");
+        return 0;
+    }
+
     // Apparently a 64-bit integer * 100.
 
     int64_t n = swaps8(*(int64_t*)p);
@@ -74,8 +82,14 @@ static PyObject* GetCash(const char* p)
 }
 
 
-static PyObject* GetNumeric(const char* p, int len)
+static PyObject* GetNumeric(const char* p, int len, int format)
 {
+    if (format == FORMAT_TEXT)
+    {
+        PyErr_SetString(Error, "Invalid result: 'numeric' data was returned as text instead of binary.");
+        return 0;
+    }
+
     int16_t* pi = (int16_t*)p;
 
     int16_t ndigits = swaps2(pi[0]);
@@ -192,21 +206,23 @@ static PyObject* GetNumeric(const char* p, int len)
     return Decimal_FromASCII(buffer.p);
 }
 
-inline PyObject* GetFloat4(const char* p)
+static PyObject* GetDate(const char* p, int format)
 {
-    return PyFloat_FromDouble(swapfloat(*(float*)p));
-}
-
-inline PyObject* GetFloat8(const char* p)
-{
-    return PyFloat_FromDouble(swapdouble(*(double*)p));
-}
-
-static PyObject* GetDate(const char* p)
-{
-    uint32_t value = swapu4(*(uint32_t*)p) + JULIAN_START;
     int year, month, date;
-    julianToDate(value, year, month, date);
+
+    if (format == FORMAT_TEXT)
+    {
+        // YYYY-MM-DD.
+        year  = strtol(&p[0], 0, 10);
+        month = strtol(&p[5], 0, 10);
+        date  = strtol(&p[8], 0, 10);
+    }
+    else
+    {
+        uint32_t value = swapu4(*(uint32_t*)p) + JULIAN_START;
+        julianToDate(value, year, month, date);
+    }
+
     return PyDate_FromDate(year, month, date);
 }
 
@@ -262,20 +278,18 @@ static PyObject* GetTimestamp(const char* p, bool integer_datetimes)
     return PyDateTime_FromDateAndTime(year, month, day, hour, minute, second, microsecond);
 }
 
-PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_datetimes)
+PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_datetimes, int format)
 {
     // Used to read a column from the database and return a Python object.
 
     if (PQgetisnull(result, iRow, iCol))
         Py_RETURN_NONE;
 
-    // int format = PQfformat(result, iCol);
     Oid oid = PQftype(result, iCol);
-
-    // printf("ConvertValue: col=%d fmt=%d oid=%d\n", iCol, format, (int)oid);
 
     const char* p = PQgetvalue(result, iRow, iCol);
 
+    // printf("OID: %d -> %s\n", oid, (format == 0) ? p : "(binary)");
 
     switch (oid)
     {
@@ -288,41 +302,44 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_dateti
         return GetBytes(p, PQgetlength(result, iRow, iCol));
 
     case INT2OID:
-        return PyLong_FromLong(swaps2(*(int16_t*)p));
+        return (format == FORMAT_TEXT) ? PyLong_FromString(p, 0, 10) : PyLong_FromLong(swaps2(*(int16_t*)p));
 
     case INT4OID:
-        return PyLong_FromLong(swaps4(*(int32_t*)p));
+        return (format == FORMAT_TEXT) ? PyLong_FromString(p, 0, 10) : PyLong_FromLong(swaps4(*(int32_t*)p));
 
     case INT8OID:
-        return PyLong_FromLongLong(swaps8(*(int64_t*)p));
+        return (format == FORMAT_TEXT) ? PyLong_FromString(p, 0, 10) : PyLong_FromLongLong(swaps8(*(int64_t*)p));
 
     case NUMERICOID:
-        return GetNumeric(p, PQgetlength(result, iRow, iCol));
+        return GetNumeric(p, PQgetlength(result, iRow, iCol), format);
 
     case CASHOID:
-        return GetCash(p);
+        return GetCash(p, format);
 
     case DATEOID:
-        return GetDate(p);
+        return GetDate(p, format);
 
     case TIMEOID:
         return GetTime(p);
 
     case FLOAT4OID:
-        return GetFloat4(p);
+        return PyFloat_FromDouble((format == FORMAT_TEXT) ? strtod(p, 0) : swapfloat(*(float*)p));
 
     case FLOAT8OID:
-        return GetFloat8(p);
+        return PyFloat_FromDouble((format == FORMAT_TEXT) ? strtod(p, 0) : swapdouble(*(double*)p));
 
     case TIMESTAMPOID:
         return GetTimestamp(p, integer_datetimes);
 
     case BOOLOID:
-        return PyBool_FromLong(*p);
+        // If format is text, we'll get 't' and 'f'.
+        return PyBool_FromLong((format == FORMAT_TEXT) ? (*p == 't') : *p);
 
     case UUIDOID:
         return UUID_FromBytes(p);
     }
 
-    return PyErr_Format(Error, "ConvertValue: Unhandled OID %d\n", (int)oid);
+    // I'm now going to return all unknown types as bytes.  This allows users to
+    // potentially workaround missing types until I can add them.
+    return GetBytes(p, PQgetlength(result, iRow, iCol));
 }

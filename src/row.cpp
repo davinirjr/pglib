@@ -15,7 +15,8 @@ PyObject* Row_New(ResultSet* rset, int iRow)
 
     for (int i = 0; i < cCols; i++)
     {
-        PyObject* value = ConvertValue(rset->result, iRow, i, rset->integer_datetimes);
+        PyObject* value = ConvertValue(rset->result, iRow, i, rset->integer_datetimes,
+                                       rset->formats[i]);
         if (value == 0)
             return 0;
         values.SetItem(i, value);

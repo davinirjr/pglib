@@ -26,9 +26,9 @@ static const ResultErrorField errorFields[] =
     { "function",          PG_DIAG_SOURCE_FUNCTION,    0 }
 };
 
-PyObject* SetConnectionError(Connection* cnxn)
+PyObject* SetConnectionError(PGconn* pgconn)
 {
-    const char* szMessage = PQerrorMessage(cnxn->pgconn);
+    const char* szMessage = PQerrorMessage(pgconn);
     PyErr_SetString(Error, szMessage);
     return 0;
 }

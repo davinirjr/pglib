@@ -12,6 +12,12 @@ struct ResultSet
 
     PGresult* result;
 
+    int* formats;
+    // An array containing a format type for each column.  The type can be 0
+    // (text) or 1 (binary).  I don't know why yet, but PostgreSQL can send
+    // columns in text even if you ask for binary.  (I may punt and always ask
+    // for text since I have to handle every OID's text format anyway.)
+
     PyObject* columns;
     // A tuple of column names, shared among rows.  Will be 0 if there are no column names.
 

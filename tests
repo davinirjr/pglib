@@ -7,8 +7,49 @@ from decimal import Decimal
 from datetime import date, time, datetime, timedelta
 # from testutils import *
 from argparse import ArgumentParser, ArgumentTypeError
+import asyncio
+
+
+def add_to_path():
+    """
+    Prepends the build directory to the path so that newly built pglib libraries are used, allowing it to be tested
+    without installing it.
+    """
+    # Put the build directory into the Python path so we pick up the version we just built.
+    #
+    # To make this cross platform, we'll search the directories until we find the .pyd file.
+
+    import imp
+
+    library_exts  = [ t[0] for t in imp.get_suffixes() if t[-1] == imp.C_EXTENSION ]
+    library_names = [ 'pglib%s' % ext for ext in library_exts ]
+
+    # Only go into directories that match our version number.
+
+    dir_suffix = '-%s.%s' % (sys.version_info[0], sys.version_info[1])
+
+    build = join(dirname(abspath(__file__)), 'build')
+
+    for root, dirs, files in os.walk(build):
+        for d in dirs[:]:
+            if not d.endswith(dir_suffix):
+                dirs.remove(d)
+
+        for name in library_names:
+            if name in files:
+                sys.path.insert(0, root)
+                return
+
+    print('Did not find the pglib library in the build directory.  Will use an installed version.')
+
+add_to_path()
+
+import pglib
+import asyncpg
 
 _TESTSTR = '0123456789-abcdefghijklmnopqrstuvwxyz-'
+
+
 
 def _generate_test_string(length):
     """
@@ -48,6 +89,10 @@ class PGTestCase(unittest.TestCase):
         self.cnxn = None
         self.args = args
         self.conninfo = conninfo
+
+        self.async = None
+        # If set to True, only test async.  If False, only test non-async.
+        # Otherwise test both.
 
     def setUp(self):
         if self.cnxn and self.args.reset:
@@ -101,6 +146,55 @@ class PGTestCase(unittest.TestCase):
             value = resulttype(value)
 
         self.assertEqual(v, value)
+
+    def _test_type(self, type, values, round_to=None):
+        """
+        A generic function for testing inserting and selecting a single data type in
+        both synchronous and asynchronous modes.
+
+        type: The data type, such as "boolean".
+
+        values: Either a single value or a list of values to insert and select.
+            A column is created or each value.
+        """
+        if not isinstance(values, (tuple, list)):
+            values = [ values ]
+
+        cols = [ chr(ord('a') + i) for i in range(len(values)) ]
+
+        create = "create table t1({})".format(','.join('%s %s' % (col, type) for col in cols))
+        insert = "insert into t1 values ({})".format(','.join('$%s' % i for i in range(1, len(values)+1)))
+        select = "select {} from t1".format(','.join(cols))
+
+        @asyncio.coroutine
+        def _t():
+            c = yield from asyncpg.connect_async(self.conninfo)
+            yield from c.execute(create)
+            yield from c.execute(insert, *values)
+            rset = yield from c.execute(select)
+            row = rset[0]
+            for (expected, value) in zip(values, row):
+                if round_to:
+                    value = round(value, round_to)
+                self.assertEqual(value, expected)
+
+        if self.async in (None, True):
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(_t())
+
+        if self.async in (None, False):
+            if self.async is None:
+                self.tearDown()
+                self.setUp()
+
+            self.cnxn.execute(create)
+            self.cnxn.execute(insert, *values)
+            rset = self.cnxn.execute(select)
+            row = rset[0]
+            for (expected, value) in zip(values, row):
+                if round_to:
+                    value = round(value, round_to)
+                self.assertEqual(value, expected)
 
 
     def test_execute_ddl(self):
@@ -283,88 +377,56 @@ class PGTestCase(unittest.TestCase):
     #
 
     def test_boolean(self):
-        self.cnxn.execute("create table t1(a boolean)")
-        for value in [True, False]:
-            self.cnxn.execute("insert into t1 values($1)", value)
-            result = self.cnxn.scalar("select a from t1 where a=$1", value)
-            self.assertEqual(result, value)
+        self._test_type('boolean', [True, False])
 
     #
     # numeric
     #
 
     def test_smallint(self):
-        self.cnxn.execute("create table t1(a smallint)")
-        for value in [-32768, -1, 0, 1, 32767]:
-            self.cnxn.execute("insert into t1 values ($1)", value)
-        for value in [-32768, -1, 0, 1, 32767]:
-            result = self.cnxn.scalar("select a from t1 where a=$1", value)
-            self.assertEqual(result, value)
+        self._test_type('smallint', [-32768, -2, -1, 0, 1, 2, 32767])
 
     def test_integer(self):
-        self.cnxn.execute("create table t1(a integer)")
-        for value in [-2147483648, -32768, -1, 0, 1, 32767, 2147483647]:
-            self.cnxn.execute("insert into t1 values ($1)", value)
-        for value in [-2147483648, -32768, -1, 0, 1, 32767, 2147483647]:
-            result = self.cnxn.scalar("select a from t1 where a=$1", value)
-            self.assertEqual(result, value)
+        self._test_type('integer', [-2147483648, -32768, -2, -1, 0, 1, 2, 32767, 2147483647])
 
     def test_bigint(self):
-        self.cnxn.execute("create table t1(a bigint)")
-        for value in [-9223372036854775808, -2147483648, -32768, -1, 0, 1, 32767, 2147483647, 9223372036854775807]:
-            self.cnxn.execute("insert into t1 values ($1)", value)
-        for value in [-2147483648, -32768, -1, 0, 1, 32767, 2147483647]:
-            result = self.cnxn.scalar("select a from t1 where a=$1", value)
-            self.assertEqual(result, value)
-
-    def test_serial(self):
-        self.cnxn.execute("create table t1(a serial, b varchar(20))")
-        self.cnxn.execute("insert into t1(b) values ('one')")
-        self.cnxn.execute("insert into t1(a, b) values (2147483647, 'max')")
-        for value in [1, 2147483647]:
-            result = self.cnxn.scalar("select a from t1 where a=$1", value)
-            self.assertEqual(result, value)
+        self._test_type('bigint',
+                        [-9223372036854775808, -2147483648, -32768, -2, -1, 0,
+                        1, 2, 32767, 2147483647, 9223372036854775807])
 
     def test_float4(self):
-        self.cnxn.execute("create table t1(a float4)")
-        for value in [1.2, -3.4]:
-            self.cnxn.execute("delete from t1")
-            self.cnxn.execute("insert into t1 values($1)", value)
-            result = self.cnxn.scalar("select a from t1")
-
-            # Careful.  Python doesn't have a float4 datatype, so an float8 is returned.  Unfortunately this means values
-            # won't always match even though they "look" like they do when you print them.
-            result = round(result, 2)
-
-            self.assertEqual(result, value)
+        # Careful.  Python doesn't have a float4 datatype, so an float8 is returned.  Unfortunately this means values
+        # won't always match even though they "look" like they do when you print them.
+        self._test_type('float4', [1.2, -3.4], round_to=2)
 
     def test_float8(self):
-        self.cnxn.execute("create table t1(a float8)")
-        for value in [1.2]:
-            self.cnxn.execute("delete from t1")
-            self.cnxn.execute("insert into t1 values($1)", value)
-            result = self.cnxn.scalar("select a from t1")
-            self.assertEqual(result, value)
-
+        self._test_type('float8', [1.2, -3.4])
 
     def test_decimal(self):
-        self.cnxn.execute("create table t1(a decimal(100,7))")
-        for s in ['-3.0000000', '123456.7890']:
-            value = Decimal(s)
-            self.cnxn.execute("delete from t1")
-            self.cnxn.execute("insert into t1 values($1)", value)
-            result = self.cnxn.scalar("select a from t1")
-            self.assertEqual(result, value)
-
+        values = [Decimal(s) for s in ['-3.0000000', '123456.7890']]
+        self._test_type('decimal(100,7)', values)
 
     def test_money(self):
-        self.cnxn.execute("create table t1(a money)")
-        for s in ['1.23', '0.0', '123.45']:
-            value = Decimal(s)
-            self.cnxn.execute("delete from t1")
-            self.cnxn.execute("insert into t1 values($1)", value)
-            result = self.cnxn.scalar("select a from t1")
-            self.assertEqual(result, value)
+        values = [Decimal(s) for s in ['1.23', '0.0', '123.45', '-12.34']]
+        self._test_type('money', values)
+
+    # Decimal objects are constructed by first making a string, which we make in
+    # English ("12.34").  Make sure that changing the locale to one that uses
+    # "," doesn't trip us up.  (I'm not sure why it doesn't.  Ideally we should
+    # work on using a different constructor.)  You'll notice that Decimal still
+    # parses the values we pass as strings before we even get to pglib.
+
+    def test_decimal_german(self):
+        import locale
+        locale.setlocale(locale.LC_ALL, 'de_DE')
+        values = [Decimal(s) for s in ['-3.0000000', '123456.7890']]
+        self._test_type('decimal(100,7)', values)
+
+    def test_money_german(self):
+        import locale
+        locale.setlocale(locale.LC_ALL, 'de_DE')
+        values = [Decimal(s) for s in ['1.23', '0.0', '123.45', '-12.34']]
+        self._test_type('money', values)
 
 
     def test_decimal_nan(self):
@@ -374,6 +436,14 @@ class PGTestCase(unittest.TestCase):
         result = self.cnxn.scalar("select a from t1")
         self.assertEqual(type(result), Decimal)
         self.assert_(result.is_nan())
+
+    def test_serial(self):
+        self.cnxn.execute("create table t1(a serial, b varchar(20))")
+        self.cnxn.execute("insert into t1(b) values ('one')")
+        self.cnxn.execute("insert into t1(a, b) values (2147483647, 'max')")
+        for value in [1, 2147483647]:
+            result = self.cnxn.scalar("select a from t1 where a=$1", value)
+            self.assertEqual(result, value)
 
     #
     # varchar
@@ -433,11 +503,7 @@ class PGTestCase(unittest.TestCase):
     #
 
     def test_date(self):
-        self.cnxn.execute("create table t1(a date)")
-        value = date(2001, 2, 3)
-        self.cnxn.execute("insert into t1 values ($1)", value)
-        result = self.cnxn.scalar("select a from t1")
-        self.assertEqual(result, value)
+        self._test_type('date', date(2001, 2, 3))
 
     def test_time(self):
         value = time(12, 34, 56)
@@ -597,6 +663,51 @@ class PGTestCase(unittest.TestCase):
         count = self.cnxn.scalar("select count(*) from t1")
         self.assertEqual(count, 0)
 
+    def test_tmp(self):
+        """
+        A sync version of test_async.  We're getting the results in text format
+        instead of binary even though I've requested binary.
+        """
+        self.cnxn.execute("create table t1(a varchar(20), b int)")
+        self.cnxn.execute("insert into t1 values ($1, $2)", 'abc', 3)
+        rset = self.cnxn.execute("select a, b from t1")
+        for row in rset:
+            self.assertEqual(row.a, 'abc')
+            self.assertEqual(row[0], 'abc')
+            self.assertEqual(row.b,  3)
+            self.assertEqual(row[1], 3)
+
+    def test_async(self):
+        @asyncio.coroutine
+        def _t():
+            c = yield from asyncpg.connect_async(self.conninfo)
+            yield from c.execute("create table t1(a varchar(20), b int)")
+            yield from c.execute("insert into t1 values ('abc', 3)")
+            rset = yield from c.execute("select a, b from t1")
+            for row in rset:
+                self.assertEqual(row.a, 'abc')
+                self.assertEqual(row[0], 'abc')
+                self.assertEqual(row.b,  3)
+                self.assertEqual(row[1], 3)
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(_t())
+
+    def test_async_params(self):
+        @asyncio.coroutine
+        def _t():
+            c = yield from asyncpg.connect_async(self.conninfo)
+            yield from c.execute("create table t1(a varchar(20), b int)")
+            yield from c.execute("insert into t1(a, b) values ($1, $2)", 'abc', 2)
+            rset = yield from c.execute("select a, b from t1")
+            for row in rset:
+                self.assertEqual(row.a,  'abc')
+                self.assertEqual(row[0], 'abc')
+                self.assertEqual(row.b,  2)
+                self.assertEqual(row[1], 2)
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(_t())
 
 def _check_conninfo(value):
     value = value.strip()
@@ -647,44 +758,9 @@ def main():
     result = testRunner.run(s)
 
 
-def add_to_path():
-    """
-    Prepends the build directory to the path so that newly built pglib libraries are used, allowing it to be tested
-    without installing it.
-    """
-    # Put the build directory into the Python path so we pick up the version we just built.
-    #
-    # To make this cross platform, we'll search the directories until we find the .pyd file.
-
-    import imp
-
-    library_exts  = [ t[0] for t in imp.get_suffixes() if t[-1] == imp.C_EXTENSION ]
-    library_names = [ 'pglib%s' % ext for ext in library_exts ]
-
-    # Only go into directories that match our version number.
-
-    dir_suffix = '-%s.%s' % (sys.version_info[0], sys.version_info[1])
-
-    build = join(dirname(abspath(__file__)), 'build')
-
-    for root, dirs, files in os.walk(build):
-        for d in dirs[:]:
-            if not d.endswith(dir_suffix):
-                dirs.remove(d)
-
-        for name in library_names:
-            if name in files:
-                sys.path.insert(0, root)
-                return
-
-    print('Did not find the pglib library in the build directory.  Will use an installed version.')
-
 
 if __name__ == '__main__':
 
     # Add the build directory to the path so we're testing the latest build, not the installed version.
 
-    add_to_path()
-
-    import pglib
     main()

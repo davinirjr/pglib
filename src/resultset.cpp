@@ -24,6 +24,25 @@ static PyObject* AllocateColumns(PGresult* result)
     return cols.Detach();
 }
 
+static int* AllocateFormats(PGresult* result)
+{
+    int count = PQnfields(result);
+    if (count == 0)
+        return 0;
+
+    int* p = (int*)malloc(sizeof(int) * count);
+    if (p == 0)
+    {
+        PyErr_NoMemory();
+        return 0;
+    }
+
+    for (int i = 0; i < count; i++)
+        p[i] = PQfformat(result, i);
+
+    return p;
+}
+
 PyObject* ResultSet_New(Connection* cnxn, PGresult* result)
 {
     ResultSet* rset = PyObject_NEW(ResultSet, &ResultSetType);
@@ -34,6 +53,7 @@ PyObject* ResultSet_New(Connection* cnxn, PGresult* result)
     }
 
     rset->result            = result;
+    rset->formats           = AllocateFormats(result);
     rset->cFetched          = 0;
     rset->columns           = AllocateColumns(result);
     rset->integer_datetimes = cnxn->integer_datetimes;
@@ -52,6 +72,10 @@ static void ResultSet_dealloc(PyObject* self)
     ResultSet* rset = (ResultSet*)self;
     if (rset->result)
         PQclear(rset->result);
+
+    if (rset->formats)
+        free(rset->formats);
+
     Py_XDECREF(rset->columns);
     PyObject_Del(self);
 }

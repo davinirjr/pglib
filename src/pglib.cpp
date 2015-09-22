@@ -6,6 +6,7 @@
 #include "datatypes.h"
 #include "getdata.h"
 #include "params.h"
+#include "errors.h"
 
 PyObject* pModule = 0;
 PyObject* Error;
@@ -62,8 +63,55 @@ static PyObject* mod_connect(PyObject* self, PyObject* args, PyObject* kwargs)
     if (!PyArg_ParseTuple(args, "s", &conninfo))
         return 0;
 
-    return Connection_New(conninfo);
+    PGconn* pgconn;
+    Py_BEGIN_ALLOW_THREADS
+    pgconn = PQconnectdb(conninfo);
+    Py_END_ALLOW_THREADS
+    if (pgconn == 0)
+        return PyErr_NoMemory();
+
+    if (PQstatus(pgconn) != CONNECTION_OK)
+    {
+        const char* szError = PQerrorMessage(pgconn);
+        PyErr_SetString(Error, szError);
+        Py_BEGIN_ALLOW_THREADS
+        PQfinish(pgconn);
+        Py_END_ALLOW_THREADS
+        return 0;
+    }
+
+    return Connection_New(pgconn, false);
 }
+
+static PyObject* mod_async_connect(PyObject* self, PyObject* args, PyObject* kwargs)
+{
+    // TODO: I don't know why, but the documentation says that timeouts are not
+    // enforced for an async connection.  We'll need to pick out the timeout
+    // from the connection string and implement our own.
+    //
+    // We might be able to get the requested value from PQconninfo.
+
+    UNUSED(self);
+
+    const char* conninfo = 0;
+    if (!PyArg_ParseTuple(args, "s", &conninfo))
+        return 0;
+
+    PGconn* pgconn = PQconnectStart(conninfo);
+    if (pgconn == 0)
+        return PyErr_NoMemory();
+
+    if (PQstatus(pgconn) == CONNECTION_BAD)
+    {
+        SetConnectionError(pgconn);
+        PQfinish(pgconn);
+        return 0;
+    }
+
+    return Connection_New(pgconn, true);
+}
+
+
 
 // static PyObject* mod_test(PyObject* self, PyObject* args)
 // {
@@ -74,6 +122,7 @@ static PyMethodDef pglib_methods[] =
 {
     // { "test",  (PyCFunction)mod_test,  METH_VARARGS, 0 },
     { "connect",  (PyCFunction)mod_connect,  METH_VARARGS, connect_doc },
+    { "async_connect",  (PyCFunction)mod_async_connect,  METH_VARARGS, connect_doc },
     { "defaults", (PyCFunction)mod_defaults, METH_NOARGS,  doc_defaults },
     { 0, 0, 0, 0 }
 };
@@ -120,6 +169,10 @@ static const ConstantDef aConstants[] = {
     MAKECONST(PQTRANS_INTRANS),
     MAKECONST(PQTRANS_INERROR),
     MAKECONST(PQTRANS_UNKNOWN),
+    MAKECONST(PGRES_POLLING_READING),
+    MAKECONST(PGRES_POLLING_WRITING),
+    MAKECONST(PGRES_POLLING_FAILED),
+    MAKECONST(PGRES_POLLING_OK),
 };
 
 PyMODINIT_FUNC PyInit_pglib()
