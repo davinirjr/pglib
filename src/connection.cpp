@@ -76,6 +76,16 @@ static void notice_receiver(void *arg, const PGresult* res)
 {
 }
 
+static void OnCompleteConnection(Connection* cnxn)
+{
+    // Initialization that can't happen until after the connection is complete.
+    // Separated because sync and async connections complete in different code
+    // paths.
+
+    const char* szID = PQparameterStatus(cnxn->pgconn, "integer_datetimes");
+    cnxn->integer_datetimes = (szID == 0) || (strcmp(szID, "on") == 0);
+}
+
 PyObject* Connection_New(PGconn* pgconn, bool async)
 {
     Connection* cnxn = PyObject_NEW(Connection, &ConnectionType);
@@ -86,15 +96,18 @@ PyObject* Connection_New(PGconn* pgconn, bool async)
         return 0;
     }
 
+    // TODO: Does this need to be done after connecting?
     PQsetNoticeReceiver(pgconn, notice_receiver, 0);
 
     cnxn->pgconn = pgconn;
-    cnxn->integer_datetimes = PQparameterStatus(pgconn, "integer_datetimes");
     cnxn->tracefile = 0;
+
 
     cnxn->async_status = async ? ASYNC_STATUS_CONNECTING : ASYNC_STATUS_SYNC;
 
-    if (async)
+    if (!async)
+        OnCompleteConnection(cnxn);
+    else
         PQsetnonblocking(cnxn->pgconn, 1);
 
     return reinterpret_cast<PyObject*>(cnxn);
@@ -768,6 +781,7 @@ static PyObject* Connection_connectPoll(PyObject* self, PyObject* args)
     if (status == PGRES_POLLING_OK)
     {
         cnxn->async_status = ASYNC_STATUS_IDLE;
+        OnCompleteConnection(cnxn);
     }
 
     if (status == PGRES_POLLING_READING || status == PGRES_POLLING_WRITING || status == PGRES_POLLING_OK)
