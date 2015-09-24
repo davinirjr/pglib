@@ -552,6 +552,14 @@ class PGTestCase(unittest.TestCase):
     # Miscellaneous
     #
 
+    def test_insert_result(self):
+        """
+        Ensure that an insert returns the row count, not a result set.
+        """
+        self.cnxn.execute("create table t1(a varchar(20), b int)")
+        result = self.cnxn.execute("insert into t1 values ('one', 1)")
+        self.assertEqual(result, 1)
+
     def test_repr(self):
         """
         For debugging purposes, printing a row should produce the same output as a tuple.

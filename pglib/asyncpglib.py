@@ -82,20 +82,16 @@ class AsyncConnection:
     def execute(self, *args):
         c = self.cnxn
 
-        flush = c._sendQuery(*args)
+        flush = c._sendQueryParams(*args)
 
         # `flush` is the result if a PQflush call.  See the docs at the bottom
         # of the chapter 31.4. Asynchronous Command Processing.
 
         while flush == 1:
-            # print('Flush returned 1.  Waiting for socket.')
             which = yield from self._wait_for(PGRES_POLLING_READING | PGRES_POLLING_WRITING)
             if which == PGRES_POLLING_READING:
-                # print('Socket is readable.  consuming')
                 c._consumeInput()
             flush = c._flush()
-
-        # print('flush loop complete')
 
         results = []
 
@@ -105,12 +101,8 @@ class AsyncConnection:
                 # we don't really know.  I believe it is okay to call consume more
                 # than once.
                 while not c._consumeInput():
-                    # print('Reading not ready.  Waiting')
                     yield from self._wait_for(PGRES_POLLING_READING)
-
-                # print('consumed and ready')
                 result = c._getResult()
-                # print('result=', result)
                 results.append(result)
         except StopIteration:
             pass
@@ -119,3 +111,63 @@ class AsyncConnection:
             return results[0]
         else:
             return results
+
+    @asyncio.coroutine
+    def script(self, SQL):
+        """
+        Executes multiple SQL statements separated by semicolons.  Returns None.
+
+        Parameters are not accepted because PostgreSQL's function that will
+        execute multiple statements (PQsendQuery) doesn't accept them and the
+        one that does accept parameters (PQsendQueryParams) doesn't execute
+        multiple statements.
+        """
+        c = self.cnxn
+        flush = c._sendQuery(SQL)
+
+        while flush == 1:
+            which = yield from self._wait_for(PGRES_POLLING_READING | PGRES_POLLING_WRITING)
+            if which == PGRES_POLLING_READING:
+                c._consumeInput()
+            flush = c._flush()
+
+        results = []
+
+        try:
+            while 1:
+                while not c._consumeInput():
+                    yield from self._wait_for(PGRES_POLLING_READING)
+                c._getResult()
+
+        except StopIteration:
+            pass
+
+    @asyncio.coroutine
+    def row(self, *args):
+        """
+        Executes the given SQL and returns the first row.  Returns None if no rows
+        are returned.
+        """
+        rset = yield from self.execute(*args)
+        return (rset[0] if rset else None)
+
+    @asyncio.coroutine
+    def scalar(self, *args):
+        """
+        Executes the given SQL and returns the first column of the first row.
+        Returns None if no rows are returned.
+        """
+        rset = yield from self.execute(*args)
+        return (rset[0][0] if rset else None)
+
+    @asyncio.coroutine
+    def begin(self):
+        yield from self.execute("BEGIN")
+
+    @asyncio.coroutine
+    def commit(self):
+        yield from self.execute("COMMIT")
+
+    @asyncio.coroutine
+    def rollback(self):
+        yield from self.execute("ROLLBACK")

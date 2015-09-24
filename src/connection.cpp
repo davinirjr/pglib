@@ -661,6 +661,32 @@ static PyObject* Connection_transaction_status(PyObject* self, void* closure)
 
 static PyObject* Connection_sendQuery(PyObject* self, PyObject* args)
 {
+    PyObject* pScript;
+    if (!PyArg_ParseTuple(args, "U", &pScript))
+        return 0;
+
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC_CONNECTED);
+    if (!cnxn)
+        return 0;
+
+    int sent;
+    Py_BEGIN_ALLOW_THREADS
+    sent = PQsendQuery(cnxn->pgconn, PyUnicode_AsUTF8(pScript));
+    Py_END_ALLOW_THREADS
+
+    if (!sent)
+        return SetConnectionError(cnxn->pgconn);
+
+    int result = PQflush(cnxn->pgconn);
+
+    if (result == -1)
+        return SetConnectionError(cnxn->pgconn);
+
+    return PyLong_FromLong(result);
+}
+
+static PyObject* Connection_sendQueryParams(PyObject* self, PyObject* args)
+{
     Connection* cnxn = CastConnection(self, REQUIRE_ASYNC_CONNECTED);
     if (!cnxn)
         return 0;
@@ -820,6 +846,7 @@ static struct PyMethodDef Connection_methods[] =
     { "rollback", Connection_rollback,   METH_NOARGS, doc_rollback },
     { "_connectPoll", Connection_connectPoll, METH_NOARGS, 0 },
     { "_sendQuery", Connection_sendQuery, METH_VARARGS, 0 },
+    { "_sendQueryParams", Connection_sendQueryParams, METH_VARARGS, 0 },
     { "_consumeInput", Connection_consumeInput, METH_VARARGS, 0 },
     { "_getResult", Connection_getResult, METH_VARARGS, 0 },
     { "_flush", Connection_flush, METH_VARARGS, 0 },

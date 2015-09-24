@@ -131,9 +131,18 @@ static PyObject* ResultSet_getcolumns(ResultSet* self, void* closure)
     return self->columns;
 }
 
+static PyObject* ResultSet_rowcount(ResultSet* self, void* closure)
+{
+    UNUSED(closure);
+    const char* sz = PQcmdTuples(self->result);
+    long count = (!sz || sz[0] == 0) ? -1 : strtol(sz, 0, 10);
+    return PyLong_FromLong(count);
+}
+
 static PyGetSetDef ResultSet_getsetters[] = 
 {
-    { (char*)"columns", (getter)ResultSet_getcolumns, 0, (char*)"tuple of column names", 0 },
+    { (char*)"columns",  (getter)ResultSet_getcolumns, 0, (char*)"tuple of column names", 0 },
+    { (char*)"rowcount", (getter)ResultSet_rowcount,   0, (char*)"Returns the number of rows affected by the SQL command", 0 },
     { 0 }
 };
 

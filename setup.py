@@ -37,12 +37,12 @@ def get_version():
 
     # If not a source release, we should be in a git repository.  Look for the latest tag.
 
-    n, result = getoutput('git describe --tags --match rel-*')
+    n, result = getoutput("git describe --tags --match '[0-9]*'")
     if n:
         print('WARNING: git describe failed with: %s %s' % (n, result))
         sys.exit('Unable to determine version.')
 
-    match = re.match(r'rel-(\d+).(\d+).(\d+) (?: -(\d+)-g[0-9a-z]+)?', result, re.VERBOSE)
+    match = re.match(r'(\d+).(\d+).(\d+) (?: -(\d+)-g[0-9a-z]+)?', result, re.VERBOSE)
     if not match:
         sys.exit('Unable to determine version.')
 
