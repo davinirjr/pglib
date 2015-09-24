@@ -1,17 +1,12 @@
 
 import asyncio
-import pglib
-from pglib import PGRES_POLLING_WRITING, PGRES_POLLING_READING, PGRES_POLLING_OK
-
-class Connection:
-    def __init__(self, conninfo):
-        self.cnxn = pglib.async_connect(conninfo)
+from _pglib import *
 
 @asyncio.coroutine
 def connect_async(conninfo, loop=None):
     if not loop:
         loop = asyncio.get_event_loop()
-    cnxn = AsyncConnection(pglib.async_connect(conninfo), loop)
+    cnxn = AsyncConnection(async_connect(conninfo), loop)
     yield from cnxn._connectPoll()
     return cnxn
 
@@ -19,7 +14,7 @@ def connect_async(conninfo, loop=None):
 class AsyncConnection:
 
     # We count on being able to use these as bitflags.
-    assert(pglib.PGRES_POLLING_READING == 1 and pglib.PGRES_POLLING_WRITING == 2)
+    assert(PGRES_POLLING_READING == 1 and PGRES_POLLING_WRITING == 2)
 
     def __init__(self, cnxn, loop):
         self.cnxn = cnxn

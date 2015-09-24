@@ -9,7 +9,6 @@ from datetime import date, time, datetime, timedelta
 from argparse import ArgumentParser, ArgumentTypeError
 import asyncio
 
-
 def add_to_path():
     """
     Prepends the build directory to the path so that newly built pglib libraries are used, allowing it to be tested
@@ -22,7 +21,7 @@ def add_to_path():
     import imp
 
     library_exts  = [ t[0] for t in imp.get_suffixes() if t[-1] == imp.C_EXTENSION ]
-    library_names = [ 'pglib%s' % ext for ext in library_exts ]
+    library_names = [ '_pglib%s' % ext for ext in library_exts ]
 
     # Only go into directories that match our version number.
 
@@ -40,12 +39,11 @@ def add_to_path():
                 sys.path.insert(0, root)
                 return
 
-    print('Did not find the pglib library in the build directory.  Will use an installed version.')
+    sys.exit('Did not find the pglib library in the build directory.')
 
 add_to_path()
 
 import pglib
-import asyncpg
 
 _TESTSTR = '0123456789-abcdefghijklmnopqrstuvwxyz-'
 
@@ -168,7 +166,7 @@ class PGTestCase(unittest.TestCase):
 
         @asyncio.coroutine
         def _t():
-            c = yield from asyncpg.connect_async(self.conninfo)
+            c = yield from pglib.connect_async(self.conninfo)
             yield from c.execute(create)
             yield from c.execute(insert, *values)
             rset = yield from c.execute(select)
@@ -680,7 +678,7 @@ class PGTestCase(unittest.TestCase):
     def test_async(self):
         @asyncio.coroutine
         def _t():
-            c = yield from asyncpg.connect_async(self.conninfo)
+            c = yield from pglib.connect_async(self.conninfo)
             yield from c.execute("create table t1(a varchar(20), b int)")
             yield from c.execute("insert into t1 values ('abc', 3)")
             rset = yield from c.execute("select a, b from t1")
@@ -696,7 +694,7 @@ class PGTestCase(unittest.TestCase):
     def test_async_params(self):
         @asyncio.coroutine
         def _t():
-            c = yield from asyncpg.connect_async(self.conninfo)
+            c = yield from pglib.connect_async(self.conninfo)
             yield from c.execute("create table t1(a varchar(20), b int)")
             yield from c.execute("insert into t1(a, b) values ($1, $2)", 'abc', 2)
             rset = yield from c.execute("select a, b from t1")

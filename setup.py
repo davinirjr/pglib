@@ -3,9 +3,20 @@
 import sys, os, re
 import subprocess, sysconfig
 from os.path import join, abspath, dirname, exists
-from distutils.core import setup, Command, Extension
+
+try:
+    from setuptools import setup, Command, Extension
+except:
+    from distutils.core import setup, Command, Extension
 from distutils.command.build_ext import build_ext
 
+long_description = """\
+A PostgreSQL interface for Python.
+
+This provides an interface to the libpq library.  It is not an DB API
+library, but is instead designed to match the interface PostgreSQL
+offers.
+"""
 
 def get_version():
     """
@@ -16,7 +27,6 @@ def get_version():
          read the version from the PKG-INFO file.
       3. Complain ;)
     """
-
     # If this is a source release the version will have already been assigned and be in the PKG-INFO file.
 
     filename = join(dirname(abspath(__file__)), 'PKG-INFO')
@@ -42,7 +52,7 @@ def get_version():
     if parts[-1] > 0:
         # We are building the next version, so increment the patch and add the word 'beta'.
         parts[-2] += 1
-        prerelease = '-rc%02d' % parts[-1]
+        prerelease = '-beta.%d' % parts[-1]
 
     return '.'.join(str(part) for part in parts[:3]) + prerelease
 
@@ -138,7 +148,6 @@ def _get_settings():
 
 
     elif sys.platform == 'darwin':
-
         # Apple is not making it easy for non-Xcode builds.  We'll always build with the latest
         # SDK we can find but we'll set the version we are targeting to the same one that
         # Python was built with.
@@ -173,12 +182,29 @@ def _get_settings():
 setup(
     name='pglib',
     version = get_version(),
-    description      = 'Simple DB API module for PostgreSQL',
+    description      = 'A PostgreSQL interface',
+    long_description = long_description,
     maintainer       = 'Michael Kleehammer',
     maintainer_email = 'michael@kleehammer.com',
 
-    ext_modules = [ Extension('pglib', _get_files(), **_get_settings()) ],
+    packages = ['pglib'],
+    ext_modules = [ Extension('_pglib', _get_files(), **_get_settings()) ],
 
+    cmdclass = { 'version' : VersionCommand },
 
-    cmdclass = { 'version' : VersionCommand }
+    keywords = 'postgresql postgres',
+
+    url='https://github.com/mkleehammer/pglib',
+    license='MIT',
+    classifiers=[
+        # https://pypi.python.org/pypi?%3Aaction=list_classifiers
+        'Development Status :: 5 - Production/Stable',
+        'Intended Audience :: Developers',
+        'Topic :: Database',
+        'License :: OSI Approved :: MIT License',
+
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3 :: Only',
+        'Programming Language :: Python :: 3.4',
+    ],
 )

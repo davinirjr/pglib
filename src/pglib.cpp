@@ -175,7 +175,7 @@ static const ConstantDef aConstants[] = {
     MAKECONST(PGRES_POLLING_OK),
 };
 
-PyMODINIT_FUNC PyInit_pglib()
+PyMODINIT_FUNC PyInit__pglib()
 {
     if (PQisthreadsafe() == 0)
     {
@@ -197,7 +197,7 @@ PyMODINIT_FUNC PyInit_pglib()
     if (!InitStringConstants())
         return 0;
 
-    Error = PyErr_NewException("pglib.Error", 0, 0);
+    Error = PyErr_NewException("_pglib.Error", 0, 0);
     if (!Error)
         return 0;
 
