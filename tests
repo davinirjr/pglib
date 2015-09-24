@@ -328,6 +328,20 @@ class PGTestCase(unittest.TestCase):
         row = rset[2]
         self.assertEquals(row[0], 2)
 
+    def test_rset_nonzero(self):
+        """
+        Ensure a resultset with no rows is "falsey".
+        """
+        self.cnxn.execute("create table t1(i int)")
+        rset = self.cnxn.execute("select * from t1")
+        self.assertIsNotNone(rset)
+        self.assertFalse(rset)
+
+        self.cnxn.execute("insert into t1 values (1), (2)")
+        rset = self.cnxn.execute("select * from t1")
+        self.assertIsNotNone(rset)
+        self.assertTrue(rset)
+
     #
     # scalar
     #
