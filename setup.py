@@ -31,7 +31,7 @@ def get_version():
 
     filename = join(dirname(abspath(__file__)), 'PKG-INFO')
     if exists(filename):
-        match = re.search(r'^Version:\s+(\d+\.\d+\.\d+(?:-beta\d+)?)', open(filename).read())
+        match = re.search(r'^Version:\s+(\d+\.\d+\.\d+(?:b\d+)?)', open(filename).read())
         if match:
             return match.group(1)
 
@@ -50,9 +50,10 @@ def get_version():
     prerelease = ''
 
     if parts[-1] > 0:
-        # We are building the next version, so increment the patch and add the word 'beta'.
+        # We are building the next version, so increment the patch and add the
+        # build number.
         parts[-2] += 1
-        prerelease = '-beta.%d' % parts[-1]
+        prerelease = 'b%d' % parts[-1]
 
     return '.'.join(str(part) for part in parts[:3]) + prerelease
 
