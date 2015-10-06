@@ -61,7 +61,7 @@ first row.  If there are no results it returns None. ::
     print(count)
 
 Each row is a Python sequence, so it can be used in many places that a tuple or list can.
-To convert the values into a tuple use <code>tuple(row)</code>.
+To convert the values into a tuple use `tuple(row)`.
 
 Finally, to make it convenient to pass a Row around to functions, the columns are also available
 from the row object.  Note that a column actually named 'columns' will override this. ::

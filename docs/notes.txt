@@ -1,0 +1,3 @@
+
+Test the docs using `make html`, but the docs are built automatically by Read The Docs when
+code is pushed to GitHub.
