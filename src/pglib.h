@@ -40,25 +40,42 @@ extern "C"
 #endif
 inline void UNUSED(...) { }
 
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 extern PyObject* Error;
 
 // From pg_type.h
-#define BOOLOID      16
-#define BYTEAOID     17
-#define INT8OID      20
-#define INT2OID      21
-#define INT4OID      23
-#define TEXTOID      25
-#define FLOAT4OID    700
-#define FLOAT8OID    701
-#define CASHOID      790
-#define BPCHAROID    1042
-#define VARCHAROID   1043
-#define DATEOID      1082
-#define TIMEOID      1083
-#define TIMESTAMPOID 1114
-#define NUMERICOID   1700
-#define UUIDOID      2950
+
+#define ANYARRAYOID     2277
+#define ANYOID          2276
+#define BOOLOID         16
+#define BPCHAROID       1042
+#define BYTEAOID        17
+#define CASHOID         790
+#define DATEOID         1082
+#define FLOAT4OID       700
+#define FLOAT8OID       701
+#define INT2ARRAYOID    1005
+#define INT2OID         21
+#define INT4ARRAYOID    1007
+#define INT4OID         23
+#define INT8ARRAYOID    1016
+#define INT8OID         20
+#define NUMERICOID      1700
+#define TEXTARRAYOID    1009
+#define TEXTOID         25
+#define TIMEOID         1083
+#define TIMESTAMPOID    1114
+#define UUIDOID         2950
+#define VARCHAROID      1043
+
+
+enum
+{
+    FORMAT_TEXT = 0,
+    FORMAT_BINARY = 1
+};
+
 
 // -----------------------------------------------------------------------------------------------
 // Debug

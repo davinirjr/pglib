@@ -10,13 +10,9 @@
 #include "byteswap.h"
 #include "datatypes.h"
 #include "juliandate.h"
+#include "pgarrays.h"
 
 #include "debug.h"
-
-enum {
-    FORMAT_TEXT = 0,
-    FORMAT_BINARY = 1
-};
 
 
 bool GetData_Init()
@@ -337,7 +333,18 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_dateti
 
     case UUIDOID:
         return UUID_FromBytes(p);
+
+    case INT4ARRAYOID:
+        return GetInt4Array(p);
+
+    case INT8ARRAYOID:
+        return GetInt8Array(p);
+
+    case TEXTARRAYOID:
+        return GetTextArray(p);
     }
+
+    // printf("OID: %d\n", oid);
 
     // I'm now going to return all unknown types as bytes.  This allows users to
     // potentially workaround missing types until I can add them.

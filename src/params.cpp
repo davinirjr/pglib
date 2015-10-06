@@ -6,6 +6,7 @@
 #include "datatypes.h"
 #include "juliandate.h"
 #include "byteswap.h"
+#include "pgarrays.h"
 
 #ifdef MS_WINDOWS
 #include <Winsock2.h>
@@ -14,19 +15,6 @@
 #include <arpa/inet.h>
 #endif
 #endif
-
-static bool BindBool(Connection* cnxn, Params& params, PyObject* param);
-static bool BindByteArray(Connection* cnxn, Params& params, PyObject* param);
-static bool BindBytes(Connection* cnxn, Params& params, PyObject* param);
-static bool BindDate(Connection* cnxn, Params& params, PyObject* param);
-static bool BindDateTime(Connection* cnxn, Params& params, PyObject* param);
-static bool BindDecimal(Connection* cnxn, Params& params, PyObject* param);
-static bool BindFloat(Connection* cnxn, Params& params, PyObject* param);
-static bool BindLong(Connection* cnxn, Params& params, PyObject* param);
-static bool BindNone(Connection* cnxn, Params& params, PyObject* param);
-static bool BindTime(Connection* cnxn, Params& params, PyObject* param);
-static bool BindUnicode(Connection* cnxn, Params& params, PyObject* param);
-static bool BindUUID(Connection* cnxn, Params& params, PyObject* param);
 
 void Params_Init()
 {
@@ -146,93 +134,6 @@ char* Params::Allocate(size_t amount)
     return p;
 }
 
-bool BindParams(Connection* cnxn, Params& params, PyObject* args)
-{
-    // Binds arguments 1-n.  Argument zero is expected to be the SQL statement itself.
-
-    if (params.count == 0)
-        return true;
-
-    if (!params.valid())
-    {
-        PyErr_NoMemory();
-        return false;
-    }
-
-    for (int i = 0, c = PyTuple_GET_SIZE(args)-1; i < c; i++)
-    {
-        // Remember that a bool is a long, a datetime is a date, etc, so the order we check them in is important.
-
-        PyObject* param = PyTuple_GET_ITEM(args, i+1);
-        if (param == Py_None)
-        {
-            if (!BindNone(cnxn, params, param))
-                return false;
-        }
-        else if (PyBool_Check(param))
-        {
-            if (!BindBool(cnxn, params, param))
-                return false;
-        }
-        else if (PyLong_Check(param))
-        {
-            if (!BindLong(cnxn, params, param))
-                return false;
-        }
-        else if (PyUnicode_Check(param))
-        {
-            if (!BindUnicode(cnxn, params, param))
-                return false;
-        }
-        else if (Decimal_Check(param))
-        {
-            if (!BindDecimal(cnxn, params, param))
-                return false;
-        }
-        else if (PyDateTime_Check(param))
-        {
-            if (!BindDateTime(cnxn, params, param))
-                return false;
-        }
-        else if (PyDate_Check(param))
-        {
-            if (!BindDate(cnxn, params, param))
-                return false;
-        }
-        else if (PyTime_Check(param))
-        {
-            if (!BindTime(cnxn, params, param))
-                return false;
-        }
-        else if (PyFloat_Check(param))
-        {
-            if (!BindFloat(cnxn, params, param))
-                return false;
-        }
-        else if (PyBytes_Check(param))
-        {
-            if (!BindBytes(cnxn, params, param))
-                return false;
-        }
-        else if (PyByteArray_Check(param))
-        {
-            if (!BindByteArray(cnxn, params, param))
-                return false;
-        }
-        else if (UUID_Check(param))
-        {
-            if (!BindUUID(cnxn, params, param))
-                return false;
-        }
-        else
-        {
-            PyErr_Format(Error, "Unable to bind parameter %d: unhandled object type %R", (i+1), param);
-            return false;
-        }
-    }
-
-    return true;
-}
 
 static bool BindUnicode(Connection* cnxn, Params& params, PyObject* param)
 {
@@ -277,66 +178,38 @@ static bool BindLong(Connection* cnxn, Params& params, PyObject* param)
 
     const long    MIN_SMALLINT = -32768; 
     const long    MAX_SMALLINT = 32767; 
-    const long    MIN_INTEGER  = -2147483647; // actually -2147483648, but generates warnings
+    const long    MIN_INTEGER  = -2147483648;
     const long    MAX_INTEGER  = 2147483647;
-    // const int64_t MIN_BIGINT   = -9223372036854775807LL; // -9223372036854775808LL actually
-    // const int64_t MAX_BIGINT   = 9223372036854775807LL;
-
-    // Try a 32-bit integer.
 
     int overflow = 0;
 
-    long lvalue = PyLong_AsLongAndOverflow(param, &overflow);
+    PY_LONG_LONG lvalue = PyLong_AsLongAndOverflow(param, &overflow);
+    if (overflow != 0)
+        return false;
 
-    if (overflow == 0)
+    if (lvalue >= MIN_SMALLINT && lvalue <= MAX_SMALLINT)
     {
-        if (MIN_SMALLINT <= lvalue && lvalue <= MAX_SMALLINT)
-        {
-            int16_t* p = reinterpret_cast<int16_t*>(params.Allocate(2));
-            if (p == 0)
-                return false;
-            *p = htons(lvalue);
-            return params.Bind(INT2OID, p, 2, 1); // 2=16 bit, 1=binary
-        }
-
-        if (MIN_INTEGER <= lvalue && lvalue <= MAX_INTEGER)
-        {
-            int32_t* p = reinterpret_cast<int32_t*>(params.Allocate(4));
-            if (p == 0)
-                return false;
-            *p = htonl(lvalue);
-            return params.Bind(INT4OID, p, 4, 1); // 2=16 bit, 1=binary
-        }
-    }
-    
-    /* Commenting out since I don't have a portable htonll
-    // Now try 64-bit
-
-    PY_LONG_LONG llvalue = PyLong_AsLongLongAndOverflow(param, &overflow);
-    if (overflow == 0 && llvalue >= MIN_BIGINT && llvalue <= MAX_BIGINT)
-    {
-        int64_t* p = reinterpret_cast<int64_t*>(Allocate(params, 8));
-        *p = static_cast<int64_t>(value);
+        int16_t* p = reinterpret_cast<int16_t*>(params.Allocate(2));
         if (p == 0)
             return false;
-        return true;
+        *p = htons((int16_t)lvalue);
+        return params.Bind(INT2OID, p, 2, FORMAT_BINARY);
     }
-    */
 
-    // At this point fall back to binding as a string.  (Normal string binding binds directly into the parameter, but
-    // I'll copy for now.  Perhaps I should pool Python objects too, depending on many object types I eventually
-    // convert to Python strings.)
+    if (lvalue >= MIN_INTEGER && lvalue <= MAX_INTEGER)
+    {
+        int32_t* p = reinterpret_cast<int32_t*>(params.Allocate(4));
+        if (p == 0)
+            return false;
+        *p = htonl((int32_t)lvalue);
+        return params.Bind(INT4OID, p, 4, FORMAT_BINARY);
+    }
 
-    Object str(PyObject_Str(param));
-    if (!str)
+    uint64_t* p = reinterpret_cast<uint64_t*>(params.Allocate(8));
+    *p = swapu8(static_cast<uint64_t>(lvalue));
+    if (p == 0)
         return false;
-    Py_ssize_t cb = 0;
-    const char* sz = PyUnicode_AsUTF8AndSize(str, &cb);
-    char* pch = params.Allocate(cb + 1);
-    if (!pch)
-        return 0;
-    memcpy(pch, sz, cb+1);
-    return params.Bind(NUMERICOID, pch, cb+1, 0);
+    return params.Bind(INT8OID, p, 8, FORMAT_BINARY);
 }
 
 
@@ -456,4 +329,97 @@ static bool BindUUID(Connection* cnxn, Params& params, PyObject* param)
     memcpy(pch, PyBytes_AS_STRING(bytes.Get()), cch);
 
     return params.Bind(UUIDOID, pch, cch, 1);
+}
+
+bool BindParams(Connection* cnxn, Params& params, PyObject* args)
+{
+    // Binds arguments 1-n.  Argument zero is expected to be the SQL statement itself.
+
+    if (params.count == 0)
+        return true;
+
+    if (!params.valid())
+    {
+        PyErr_NoMemory();
+        return false;
+    }
+
+    for (int i = 0, c = PyTuple_GET_SIZE(args)-1; i < c; i++)
+    {
+        // Remember that a bool is a long, a datetime is a date, etc, so the order we check them in is important.
+
+        PyObject* param = PyTuple_GET_ITEM(args, i+1);
+        if (param == Py_None)
+        {
+            if (!BindNone(cnxn, params, param))
+                return false;
+        }
+        else if (PyBool_Check(param))
+        {
+            if (!BindBool(cnxn, params, param))
+                return false;
+        }
+        else if (PyLong_Check(param))
+        {
+            if (!BindLong(cnxn, params, param))
+                return false;
+        }
+        else if (PyUnicode_Check(param))
+        {
+            if (!BindUnicode(cnxn, params, param))
+                return false;
+        }
+        else if (Decimal_Check(param))
+        {
+            if (!BindDecimal(cnxn, params, param))
+                return false;
+        }
+        else if (PyDateTime_Check(param))
+        {
+            if (!BindDateTime(cnxn, params, param))
+                return false;
+        }
+        else if (PyDate_Check(param))
+        {
+            if (!BindDate(cnxn, params, param))
+                return false;
+        }
+        else if (PyTime_Check(param))
+        {
+            if (!BindTime(cnxn, params, param))
+                return false;
+        }
+        else if (PyFloat_Check(param))
+        {
+            if (!BindFloat(cnxn, params, param))
+                return false;
+        }
+        else if (PyBytes_Check(param))
+        {
+            if (!BindBytes(cnxn, params, param))
+                return false;
+        }
+        else if (PyByteArray_Check(param))
+        {
+            if (!BindByteArray(cnxn, params, param))
+                return false;
+        }
+        else if (UUID_Check(param))
+        {
+            if (!BindUUID(cnxn, params, param))
+                return false;
+        }
+        else if (PyList_Check(param) || PyTuple_Check(param))
+        {
+            if (!BindArray(params, param))
+                return false;
+        }
+        else
+        {
+            PyErr_Format(Error, "Unable to bind parameter %d: unhandled object type %R", (i+1), param);
+            return false;
+        }
+    }
+
+    return true;
 }

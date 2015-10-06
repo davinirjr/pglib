@@ -404,7 +404,7 @@ class PGTestCase(unittest.TestCase):
     def test_bigint(self):
         self._test_type('bigint',
                         [-9223372036854775808, -2147483648, -32768, -2, -1, 0,
-                        1, 2, 32767, 2147483647, 9223372036854775807])
+                         1, 2, 32767, 2147483647, 9223372036854775807])
 
     def test_float4(self):
         # Careful.  Python doesn't have a float4 datatype, so an float8 is returned.  Unfortunately this means values
@@ -547,6 +547,90 @@ class PGTestCase(unittest.TestCase):
     #                           'xyz',
     #                           # purposely leave out value for 'c'
     #                           '1')
+
+    #
+    # array of parameters
+    #
+
+    def test_array_int2(self):
+        self.cnxn.execute("create table t1(id int, v int[])")
+        value = [None, -32768, -2, -1, 0, 1, 2, 32767]
+        self.cnxn.execute("insert into t1 values (1, $1)", value)
+        result = self.cnxn.scalar("select v from t1")
+        self.assertEqual(result, value)
+
+    def test_array_int4(self):
+        # Test with a 4-byte value
+        self.cnxn.execute("create table t1(id int, v int[])")
+        value = [None, -2147483648, -32768, -2, -1, 0, 1, 2, 32767, 2147483647]
+        self.cnxn.execute("insert into t1 values (1, $1)", value)
+        result = self.cnxn.scalar("select v from t1")
+        self.assertEqual(result, value)
+
+    def test_array_int8(self):
+        MAX_INTEGER = 2147483647
+        self.cnxn.execute("create table t1(id int, v bigint[])")
+        value = [None, -9223372036854775808, -2147483648, -32768, -2, -1, 0,
+                 1, 2, 32767, 2147483647, 9223372036854775807]
+        self.cnxn.execute("insert into t1 values (1, $1)", value)
+        result = self.cnxn.scalar("select v from t1")
+        self.assertEqual(result, value)
+
+    def test_array_text(self):
+        self.cnxn.execute("create table t1(id int, v text[])")
+        value = ['one', None, 'two']
+        self.cnxn.execute("insert into t1 values (1, $1)", value)
+        result = self.cnxn.scalar("select v from t1")
+        self.assertEqual(result, value)
+
+    def test_array_int_in(self):
+        self.cnxn.execute("create table t1(id int)")
+        for value in [1,2,3]:
+            self.cnxn.execute("insert into t1 values ($1)", value)
+        value = [1,3]
+        rset = self.cnxn.execute("select id from t1 where id = ANY($1)", value)
+        self.assertEquals(len(rset), 2)
+
+    def test_array_int8_in(self):
+        MAX_INTEGER = 2147483647
+        self.cnxn.execute("create table t1(id bigint)")
+        for value in [1, MAX_INTEGER * 2, sys.maxsize]:
+            self.cnxn.execute("insert into t1 values ($1)", value)
+        value = [1,sys.maxsize]
+        rset = self.cnxn.execute("select id from t1 where id = ANY($1)", value)
+        self.assertEquals(len(rset), 2)
+
+    def test_array_text_in(self):
+        self.cnxn.execute("create table t1(id int, v text)")
+        for value in ['one', 'two', 'three']:
+            self.cnxn.execute("insert into t1 values (1, $1)", value)
+        value = ['one', 'three']
+        rset = self.cnxn.execute("select v from t1 where v = ANY($1)", value)
+        self.assertEquals(len(rset), 2)
+
+    # I don't have a good solution for this yet.  If an array is empty or all NULLs, we don't
+    # know what type to choose when sending to the DB.  I've chosen text, but it doesn't
+    # convert as wells as I'd hoped - the backend won't accept it.  I've tried ANYARRAYOID and
+    # that doesn't work either.
+
+    # def test_array_none(self):
+    #     # I've made the data type 'int[]' since we're going to try inserting as text[].  All we
+    #     # have is "None", so we don't know what type and will default to text.
+    #     self.cnxn.execute("create table t1(id int, v int[])")
+    #     value = [None, None, None]
+    #     self.cnxn.execute("insert into t1 values (1, $1)", value)
+    #     result = self.cnxn.scalar("select v from t1")
+    #     self.assertEqual(result, value)
+
+    # This looks weird, but each type must be tested like this.  Code in each type ensures the
+    # types are the same.  Perhaps we should fix that, but I didn't want to go through the loop
+    # so many times.
+
+    def test_array_int_bad(self):
+        self.cnxn.execute("create table t1(id int, v int[])")
+        value = [1,'two']
+        with self.assertRaises(pglib.Error):
+            self.cnxn.execute("insert into t1 values (1, $1)", value)
 
     #
     # Miscellaneous
