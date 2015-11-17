@@ -7,6 +7,8 @@
 #include "juliandate.h"
 #include "byteswap.h"
 #include "pgarrays.h"
+#include "pgtypes.h"
+
 
 #ifdef MS_WINDOWS
 #include <Winsock2.h>
@@ -284,6 +286,27 @@ static bool BindTime(Connection* cnxn, Params& params, PyObject* param)
     return true;
 }
 
+// IMPORTANT: These are not exposed in the Python API!
+#define GET_TD_DAYS(o)          (((PyDateTime_Delta *)(o))->days)
+#define GET_TD_SECONDS(o)       (((PyDateTime_Delta *)(o))->seconds)
+#define GET_TD_MICROSECONDS(o)  (((PyDateTime_Delta *)(o))->microseconds)
+
+static bool BindDelta(Connection* cnxn, Params& params, PyObject* param)
+{
+    if (GET_TD_MICROSECONDS(param))
+        return PyErr_Format(Error, "Microseconds are not supported in intervals.");
+
+    Interval* p = (Interval*)params.Allocate(sizeof(Interval));
+    if (!p)
+        return false;
+
+    p->time  = swaps8((uint64_t)GET_TD_SECONDS(param) * 1000000);
+    p->day   = swaps4(GET_TD_DAYS(param));
+    p->month = 0;
+
+    return params.Bind(INTERVALOID, p, sizeof(Interval), FORMAT_BINARY);
+}
+
 static bool BindBytes(Connection* cnxn, Params& params, PyObject* param)
 {
     char* p = PyBytes_AS_STRING(param);
@@ -325,7 +348,7 @@ static bool BindUUID(Connection* cnxn, Params& params, PyObject* param)
     Py_ssize_t cch = PyBytes_GET_SIZE(bytes.Get());
     char* pch = params.Allocate(cch);
     if (!pch)
-        return 0;
+        return false;
     memcpy(pch, PyBytes_AS_STRING(bytes.Get()), cch);
 
     return params.Bind(UUIDOID, pch, cch, 1);
@@ -387,6 +410,11 @@ bool BindParams(Connection* cnxn, Params& params, PyObject* args)
         else if (PyTime_Check(param))
         {
             if (!BindTime(cnxn, params, param))
+                return false;
+        }
+        else if (PyDelta_Check(param))
+        {
+            if (!BindDelta(cnxn, params, param))
                 return false;
         }
         else if (PyFloat_Check(param))

@@ -531,6 +531,15 @@ class PGTestCase(unittest.TestCase):
         result = self.cnxn.scalar("select a from t1")
         self.assertEqual(result, value)
 
+    def test_interval(self):
+        self.cnxn.execute("create table t1(a interval)")
+        value = timedelta(days=3, hours=4, minutes=5, seconds=6)
+        self.cnxn.execute("insert into t1 values ($1)", value)
+        result = self.cnxn.scalar("select a from t1")
+        self.assertEqual(result, value)
+        print(result)
+
+
     #
     # Error Handling
     #

@@ -11,6 +11,7 @@
 #include "datatypes.h"
 #include "juliandate.h"
 #include "pgarrays.h"
+#include "pgtypes.h"
 
 #include "debug.h"
 
@@ -242,6 +243,31 @@ inline PyObject* GetBytes(const char* p, int len)
     return PyBytes_FromStringAndSize(p, len);
 }
 
+static PyObject* GetInterval(const char* p) // , bool integer_datetimes)
+{
+    Interval* pinterval = (Interval*)p;
+
+    int64_t n = swaps8(pinterval->time);
+    n /= 1000000; // microseconds
+    int second = n % 60;
+    n /= 60;
+    int minute = n % 60;
+    n /= 60;
+    int hour = n % 24;
+
+    uint32_t day   = swaps4(pinterval->day);
+    uint32_t month = swaps4(pinterval->month);
+    uint32_t year = month / 12;
+
+    if (month || year)
+        return PyErr_Format(Error, "Years and months are not supported in intervals");
+
+    int seconds = (second) + (60 * minute) + (3600 * hour);
+    int days    = day;
+
+    return PyDelta_FromDSU(days, seconds, 0);
+}
+
 static PyObject* GetTimestamp(const char* p, bool integer_datetimes)
 {
     int year, month, day, hour, minute, second, microsecond;
@@ -342,6 +368,9 @@ PyObject* ConvertValue(PGresult* result, int iRow, int iCol, bool integer_dateti
 
     case TEXTARRAYOID:
         return GetTextArray(p);
+
+    case INTERVALOID:
+        return GetInterval(p);
     }
 
     // printf("OID: %d\n", oid);

@@ -736,7 +736,7 @@ static PyObject* Connection_flush(PyObject* self, PyObject* args)
 {
     UNUSED(args);
 
-    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC || REQUIRE_OPEN);
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC | REQUIRE_OPEN);
     if (!cnxn)
         return 0;
 
@@ -754,7 +754,7 @@ static PyObject* Connection_consumeInput(PyObject* self, PyObject* args)
     // with _getResult and False if data is not ready.  If an error occurs an
     // exception is raised.
 
-    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC || REQUIRE_OPEN);
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC | REQUIRE_OPEN);
     if (!cnxn)
         return 0;
 
@@ -769,7 +769,7 @@ static PyObject* Connection_getResult(PyObject* self, PyObject* args)
 {
     UNUSED(args);
 
-    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC || REQUIRE_OPEN);
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC | REQUIRE_OPEN);
     if (!cnxn)
         return 0;
 
@@ -796,7 +796,7 @@ static PyObject* Connection_connectPoll(PyObject* self, PyObject* args)
     // Returns the polling constants OK, READING, and WRITING.  If an error
     // occurs it will be raised.
 
-    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC || REQUIRE_OPEN);
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC | REQUIRE_OPEN);
     if (!cnxn)
         return 0;
 

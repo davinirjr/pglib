@@ -61,6 +61,7 @@ extern PyObject* Error;
 #define INT4OID         23
 #define INT8ARRAYOID    1016
 #define INT8OID         20
+#define INTERVALOID		1186
 #define NUMERICOID      1700
 #define TEXTARRAYOID    1009
 #define TEXTOID         25
