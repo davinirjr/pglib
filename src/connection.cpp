@@ -102,7 +102,6 @@ PyObject* Connection_New(PGconn* pgconn, bool async)
     cnxn->pgconn = pgconn;
     cnxn->tracefile = 0;
 
-
     cnxn->async_status = async ? ASYNC_STATUS_CONNECTING : ASYNC_STATUS_SYNC;
 
     if (!async)
@@ -765,6 +764,50 @@ static PyObject* Connection_consumeInput(PyObject* self, PyObject* args)
     return PyBool_FromLong(PQisBusy(cnxn->pgconn) == 0);
 }
 
+static PyObject* Connection_notifies(PyObject* self, PyObject* args)
+{
+    UNUSED(args);
+
+    Connection* cnxn = CastConnection(self, REQUIRE_ASYNC | REQUIRE_OPEN);
+    if (!cnxn)
+        return 0;
+
+    List list;
+
+    PGnotify* p;
+    while ((p = PQnotifies(cnxn->pgconn)) != 0)
+    {
+        if (!list)
+        {
+            list.Attach(PyList_New(0));
+            if (!list)
+                return 0;
+        }
+
+        Tuple pair(2);
+        if (!pair)
+            return 0;
+
+        pair.SetItem(0, PyUnicode_DecodeUTF8(p->relname, strlen(p->relname), "error"));
+        if (p->extra)
+        {
+            pair.SetItem(1, PyUnicode_DecodeUTF8(p->extra, strlen(p->extra), "error"));
+        }
+        else
+        {
+            Py_INCREF(Py_None);
+            pair.SetItem(1, Py_None);
+        }
+
+        list.AppendAndBorrow(pair.Detach());
+    }
+
+    if (list)
+        return list.Detach();
+
+    Py_RETURN_NONE;
+}
+
 static PyObject* Connection_getResult(PyObject* self, PyObject* args)
 {
     UNUSED(args);
@@ -850,6 +893,7 @@ static struct PyMethodDef Connection_methods[] =
     { "_consumeInput", Connection_consumeInput, METH_VARARGS, 0 },
     { "_getResult", Connection_getResult, METH_VARARGS, 0 },
     { "_flush", Connection_flush, METH_VARARGS, 0 },
+    { "_notifies", Connection_notifies, METH_NOARGS, 0 },
     { 0, 0, 0, 0 }
 };
 

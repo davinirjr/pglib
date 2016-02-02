@@ -1,4 +1,20 @@
 
+# Design
+# ======
+#
+# Normal commands like `execute` wait on the `_wait_for` method.  This method creates a new
+# Future for each call and waits on it before returning.  A reader or writer is added to the
+# libpq socket that completes the future.  When `_wait_for` wakes up from the future it removes
+# the reader and writer.
+#
+# This is designed for executing a single command at a time.  Since the methods are designed
+# for "yield from" this should be fine.
+#
+# Notifications, however, require a reader to be attached at all times.  If it is possible for
+# the reader/writer callback to determine if it was triggered due to notifications or not,
+# notifications and execute could be mixed.  In the current design, a connection can either be
+# used for executing or listening.
+
 import asyncio
 from _pglib import *
 
@@ -10,8 +26,13 @@ def connect_async(conninfo, loop=None):
     yield from cnxn._connectPoll()
     return cnxn
 
-
 class AsyncConnection:
+
+    USE_IDLE    = 0
+    USE_COMMAND = 1
+    USE_LISTEN  = 2
+
+    _USE_TEXT = [ 'idle', 'command', 'listening' ]
 
     # We count on being able to use these as bitflags.
     assert(PGRES_POLLING_READING == 1 and PGRES_POLLING_WRITING == 2)
@@ -20,6 +41,9 @@ class AsyncConnection:
         self.cnxn = cnxn
         self.loop = loop
         self.sock = cnxn.socket
+
+        self.use = self.USE_IDLE
+        # Is the connection in-use and what is it being used for?
 
         self._waiting = 0
         # Debug flags only used for repr indicating the PGRES_POLLING_READING
@@ -34,7 +58,6 @@ class AsyncConnection:
         Creates a future and waits until the socket is in the specified flags.
 
         flags
-
           A combination of PGRES_POLLING_READING and PGRES_POLLING_WRITING.
           These have values 1 and 2 so you can provide both using A|B.
         """
@@ -78,14 +101,56 @@ class AsyncConnection:
                 return
             yield from self._wait_for(flags)
 
+
+    @asyncio.coroutine
+    def listen(self, *channels):
+        """
+        Call to listen for the given channel or channels.  An asyncio.Queue is returned which the
+        notifications will be written into.
+        """
+        if self.use:
+            raise Exception('The connection is already in use (%s)' % self._USE_TEXT[self.use])
+
+        queue = asyncio.Queue()
+
+        for channel in channels:
+            yield from self.execute('listen ' + channel)
+
+        self.use = self.USE_LISTEN
+        self.loop.add_reader(self.sock, self._on_notify, queue)
+
+        # It's possible notifications came in while we were issuing LISTEN commands, so make a
+        # check now.
+        self._on_notify(queue)
+
+        return queue
+
+    @asyncio.coroutine
+    def notify(self, channel, payload=None):
+        yield from self.execute('select pg_notify($1, $2)', channel, payload)
+
+    def _on_notify(self, queue):
+        while self.cnxn._consumeInput():
+            n = self.cnxn._notifies()
+            if not n:
+                break
+            for item in n:
+                queue.put_nowait(item)
+
+
     @asyncio.coroutine
     def execute(self, *args):
+        if self.use:
+            raise Exception('The connection is already in use (%s)' % self._USE_TEXT[self.use])
+
+        self.use = self.USE_COMMAND
+
         c = self.cnxn
 
         flush = c._sendQueryParams(*args)
 
         # `flush` is the result if a PQflush call.  See the docs at the bottom
-        # of the chapter 31.4. Asynchronous Command Processing.
+        # of chapter 31.4. Asynchronous Command Processing.
 
         while flush == 1:
             which = yield from self._wait_for(PGRES_POLLING_READING | PGRES_POLLING_WRITING)
@@ -107,6 +172,8 @@ class AsyncConnection:
         except StopIteration:
             pass
 
+        self.use = self.USE_IDLE
+
         if len(results) == 1:
             return results[0]
         else:
@@ -122,6 +189,9 @@ class AsyncConnection:
         one that does accept parameters (PQsendQueryParams) doesn't execute
         multiple statements.
         """
+        if self.use:
+            raise Exception('The connection is already in use (%s)' % self._USE_TEXT[self.use])
+
         c = self.cnxn
         flush = c._sendQuery(SQL)
 

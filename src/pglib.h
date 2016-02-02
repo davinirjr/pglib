@@ -152,6 +152,11 @@ struct Tuple : public Object
         PyTuple_SET_ITEM(p, i, item);
     }
 
+    PyObject* GetItem(Py_ssize_t i)
+    {
+        return PyTuple_GET_ITEM(p, i);
+    }
+
     operator bool() { return p != 0; }
 
     operator PyTupleObject*() { return (PyTupleObject*)p; }
@@ -159,6 +164,8 @@ struct Tuple : public Object
 
 struct List : public Object
 {
+    List() {}
+
     List(Py_ssize_t len)
         : Object(PyList_New(len))
     {
