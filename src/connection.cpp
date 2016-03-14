@@ -182,7 +182,7 @@ static PyObject* Connection_script(PyObject* self, PyObject* args)
     }
 }
 
-const char* doc_copy_from_csv = 
+const char* doc_copy_from_csv =
     "Connection.copy_from_csv(table, source, header=0) --> None\n"
     "\n"
     "Executes a COPY FROM command.\n"
@@ -497,7 +497,7 @@ static PyObject* Connection_begin(PyObject* self, PyObject* args)
 {
     UNUSED(args);
     Connection* cnxn = (Connection*)self;
-    
+
     PGTransactionStatusType txnstatus;
     ExecStatusType status = PGRES_COMMAND_OK;
     ResultHolder result;
@@ -527,7 +527,7 @@ static PyObject* Connection_commit(PyObject* self, PyObject* args)
 {
     UNUSED(args);
     Connection* cnxn = (Connection*)self;
-    
+
     PGTransactionStatusType txnstatus;
     ExecStatusType status = PGRES_COMMAND_OK;
     ResultHolder result;
@@ -557,7 +557,7 @@ static PyObject* Connection_rollback(PyObject* self, PyObject* args)
 {
     UNUSED(args);
     Connection* cnxn = (Connection*)self;
-    
+
     PGTransactionStatusType txnstatus;
     ExecStatusType status = PGRES_COMMAND_OK;
     ResultHolder result;
@@ -764,8 +764,98 @@ static PyObject* Connection_consumeInput(PyObject* self, PyObject* args)
     return PyBool_FromLong(PQisBusy(cnxn->pgconn) == 0);
 }
 
-static PyObject* Connection_notifies(PyObject* self, PyObject* args)
+static PyObject* ConvertNotification(PGnotify* pn)
 {
+    // Note that this frees pn.
+
+    MemHolder<PGnotify> n(pn);
+
+    Tuple tuple(2);
+    if (!tuple)
+        return 0;
+    tuple.SetItem(0, PyUnicode_FromString(pn->relname));
+    if (!tuple.GetItem(0))
+        return 0;
+
+    if (pn->extra)
+    {
+        tuple.SetItem(1, PyUnicode_FromString(pn->extra));
+    }
+    else
+    {
+        tuple.SetItem(1, Py_None);
+        Py_INCREF(Py_None);
+    }
+
+    return tuple.Detach();
+}
+
+
+static PyObject* Connection_notifies(PyObject* self, PyObject* args, PyObject* kwargs)
+{
+    // A synchronous function that waits for the next notification.
+
+    // TODO: This doesn't handle signals.
+
+    // TODO: This doesn't loop in case the select data is for something else.  On the other
+    // hand, perhaps it shouldn't.  The data isn't going to get read unless we return.
+
+    static const char* kwlist[] = { "timeout", 0 };
+    double timeout = INFINITY;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|d", (char**)kwlist, &timeout))
+        return 0;
+
+    Connection* cnxn = CastConnection(self, REQUIRE_SYNC | REQUIRE_OPEN);
+    if (!cnxn)
+        return 0;
+
+    if (PQconsumeInput(cnxn->pgconn) == 0)
+        return SetConnectionError(cnxn->pgconn);
+
+    PGnotify* pn = PQnotifies(cnxn->pgconn);
+    if (pn)
+        return ConvertNotification(pn);
+
+    int sock = PQsocket(cnxn->pgconn);
+
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(sock, &rfds);
+
+    struct timeval tv;
+    if (timeout != INFINITY)
+    {
+        tv.tv_sec  = (int)timeout;
+        tv.tv_usec = ((int)(timeout * 1000000)) % 1000000;
+    }
+
+    int retval;
+    Py_BEGIN_ALLOW_THREADS
+    retval = select(sock + 1, &rfds, 0, 0, (timeout != INFINITY) ? &tv : 0);
+    Py_END_ALLOW_THREADS
+
+    if (retval == -1) {
+        SetStringError(Error, "An error occurred waiting for notifications");
+        return 0;
+    }
+
+    if (retval) {
+        if (PQconsumeInput(cnxn->pgconn) == 0)
+            return SetConnectionError(cnxn->pgconn);
+
+        pn = PQnotifies(cnxn->pgconn);
+        if (pn)
+            return ConvertNotification(pn);
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+static PyObject* Connection__notifies(PyObject* self, PyObject* args)
+{
+    // Used by the asynchronous connection wrapper to return notifications.
+
     UNUSED(args);
 
     Connection* cnxn = CastConnection(self, REQUIRE_ASYNC | REQUIRE_OPEN);
@@ -784,22 +874,10 @@ static PyObject* Connection_notifies(PyObject* self, PyObject* args)
                 return 0;
         }
 
-        Tuple pair(2);
-        if (!pair)
+        PyObject* n = ConvertNotification(p);
+        if (!n)
             return 0;
-
-        pair.SetItem(0, PyUnicode_DecodeUTF8(p->relname, strlen(p->relname), "error"));
-        if (p->extra)
-        {
-            pair.SetItem(1, PyUnicode_DecodeUTF8(p->extra, strlen(p->extra), "error"));
-        }
-        else
-        {
-            Py_INCREF(Py_None);
-            pair.SetItem(1, Py_None);
-        }
-
-        list.AppendAndBorrow(pair.Detach());
+        list.AppendAndBorrow(n);
     }
 
     if (list)
@@ -831,6 +909,49 @@ static PyObject* Connection_getResult(PyObject* self, PyObject* args)
 
     return ReturnResult(cnxn, result);
 }
+
+static PyObject* pg_notify = 0;
+
+static PyObject* Connection_notify(PyObject* self, PyObject* args)
+{
+    PyObject* channel;
+    PyObject* payload = 0;
+    if (!PyArg_ParseTuple(args, "U|U", &channel, &payload))
+        return 0;
+
+    Connection* cnxn = CastConnection(self, REQUIRE_OPEN);
+    if (!cnxn)
+        return 0;
+
+    if (!pg_notify)
+    {
+        pg_notify = PyUnicode_FromString("select pg_notify($1, $2)");
+        if (!pg_notify)
+            return 0;
+    }
+
+    Tuple newArgs(3);
+    if (!newArgs)
+        return 0;
+
+    newArgs.SetItem(0, pg_notify);
+    Py_INCREF(pg_notify);
+
+    newArgs.SetItem(1, channel);
+    Py_INCREF(channel);
+
+    if (!payload)
+        payload = Py_None;
+
+    newArgs.SetItem(2, payload);
+    Py_INCREF(payload);
+
+    ResultHolder result = internal_execute(self, newArgs);
+    if (result == 0)
+        return 0;
+    return ReturnResult(cnxn, result);
+}
+
 
 static PyObject* Connection_connectPoll(PyObject* self, PyObject* args)
 {
@@ -893,7 +1014,9 @@ static struct PyMethodDef Connection_methods[] =
     { "_consumeInput", Connection_consumeInput, METH_VARARGS, 0 },
     { "_getResult", Connection_getResult, METH_VARARGS, 0 },
     { "_flush", Connection_flush, METH_VARARGS, 0 },
-    { "_notifies", Connection_notifies, METH_NOARGS, 0 },
+    { "_notifies", Connection__notifies, METH_NOARGS, 0 },
+    { "notifies", (PyCFunction)Connection_notifies, METH_VARARGS | METH_KEYWORDS, 0 },
+    { "notify", Connection_notify, METH_VARARGS | METH_KEYWORDS, 0 },
     { 0, 0, 0, 0 }
 };
 

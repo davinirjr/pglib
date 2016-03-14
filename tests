@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, os, re, platform
+import sys, os, re, platform, threading
 from os.path import join, dirname, abspath, basename
 import unittest
 from decimal import Decimal
@@ -821,7 +821,7 @@ class PGTestCase(unittest.TestCase):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(_t())
 
-    def test_notify(self):
+    def test_async_notify(self):
         @asyncio.coroutine
         def _read(queue):
             return (yield from queue.get())
@@ -841,6 +841,37 @@ class PGTestCase(unittest.TestCase):
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(_t())
+
+
+    def test_notifies(self):
+        "Ensure synchronous notifies() works."
+
+        # We want to test two cases: (1) a notification exists before the call and (2) a
+        # notification exists after we're in the select loop.
+        #
+        # The first is easy.  The second requires we start a thread but have it sleep a bit to
+        # give us time to get into the select loop.  I've chosen to sleep for 0.1 seconds.
+        #
+        # Remember that ther server can de-duplicate notifications.  I don't think it matters
+        # here since we're using separate connections for the notifications, but I'll use
+        # different channels anyway.
+
+        def notify(conninfo):
+            import time
+            time.sleep(0.1)
+            other = pglib.connect(conninfo)
+            other.execute("notify test2, 'testing'")
+
+        self.cnxn.execute("listen test1")
+        self.cnxn.execute("listen test2")
+
+        self.cnxn.notify('test1', 'testing')
+        n = self.cnxn.notifies(timeout=1)
+        self.assertEqual(n, ('test1', 'testing'))
+
+        threading.Thread(target=notify, args=(self.conninfo,)).start()
+        n = self.cnxn.notifies(timeout=1)
+        self.assertEqual(n, ('test2', 'testing'))
 
 
 def _check_conninfo(value):

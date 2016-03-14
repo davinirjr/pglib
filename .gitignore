@@ -9,5 +9,5 @@ TAGS
 tmp
 pglib.egg-info
 /pglib.so
-venv
+/venv*
 docs/_build

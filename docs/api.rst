@@ -131,10 +131,28 @@ connection is closed when the Connection object is destroyed.
 
 .. method:: Connection.notify(channel [, payload]) --> None
 
-   This is only available for asynchronous connections.
-
    A convenience method that issues a `NOTIFY <http://www.postgresql.org/docs/9.5/static/sql-notify.html>`_
    command using "select pg_notify(channel, payload)".
+
+   Note that ``pg_notify`` does *not* lowercase the channel name but executing the NOTIFY
+   command via SQL will unless you put the channel name in double quotes.  For example
+   ``cnxn.execute('NOTIFY TESTING')`` will actually use the channel "testing" but both
+   ``cnxn.execute('NOTIFY "TESTING"')`` and ``cnxn.notify('TESTING')`` will use the channel
+   "TESTING".
+
+.. method:: Connection.notifies(timeout=None) --> (channel, payload) | None
+
+   A method for synchronous connections that blocks until a NOTIFY notification is available or
+   until the timeout expires.  If a notification is available it is returned as a tuple.  ``None``
+   is returned the timeout expires.
+
+   To use this, first issue one or more LISTEN statements: ``cnxn.execute('LISTEN channel')``.
+   Note that if you don't put the channel name in double quotes it will be lowercased by the
+   server.
+
+   Notifications will always contain two elements and the PostgreSQL documentation seems to
+   indicate the payload will be an empty string and never None (NULL), but I have not confirmed
+   this.
 
 .. method:: Connection.row(sql [, param, ...]) --> Row | None
 

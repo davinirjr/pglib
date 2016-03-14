@@ -214,6 +214,27 @@ struct ResultHolder
     }
 };
 
+template <class T>
+struct MemHolder
+{
+    T* p;
+    MemHolder(T* _p)
+    {
+        p = _p;
+    }
+
+    ~MemHolder()
+    {
+        if (p)
+            PQfreemem(p);
+    }
+
+    operator T*()
+    {
+        return p;
+    }
+};
+
 extern PyObject* strComma;
 extern PyObject* strParens;
 extern PyObject* strLeftParen;

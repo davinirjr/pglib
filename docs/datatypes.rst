@@ -25,7 +25,7 @@ Parameters of the following types are accepted:
 +-----------------------+------------------+
 | datetime.date         | date             |
 +-----------------------+------------------+
-|   datetime.datetime   | timestamp        |
+| datetime.datetime     | timestamp        |
 +-----------------------+------------------+
 | datetime.time         | time             |
 +-----------------------+------------------+

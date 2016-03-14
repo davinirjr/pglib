@@ -15,11 +15,17 @@ to the :func:`connect` function. ::
 Basic Selecting
 ---------------
 
-:meth:`Connection.execute <execute>` accepts a SQL statement and optional parameters and returns
-a :class:`ResultSet`. If the SQL was a select statement, :data:`ResultSet.columns`
-will be a tuple containing the resulting column names and act as a collection of the resulting
-Row objects. The Row objects can be accessed by indexing into the ResultSet or iterating over
-it. ::
+:meth:`Connection.execute <execute>` accepts a SQL statement and optional parameters.  What it
+returns depends on the kind of SQL statement:
+
+* A select statement will return :class:`ResultSet` with all of the rows.
+* An insert, update, or delete statement will return the number of rows modified.
+* Any other statement (e.g. "create table") will return None.
+
+If the SQL was a select statement, :data:`ResultSet.columns` will be a tuple containing the
+column names selected.
+
+The Row objects can be accessed by indexing into the ResultSet or iterating over it. ::
 
     rset = cnxn.execute("select id, name from users")
 
@@ -31,9 +37,9 @@ it. ::
     for row in rset:
         print(row)
 
-The design of libpq, PostgreSQL's client library, means that all row data is kept in memory
-while the ResultSet exists.  This means that result sets can be iterated over multiple times.
-It also means large result sets should be discarded as soon as possible.
+The PostgreSQL client library, libps, stores all row data in memory while the ResultSet exists.
+This means that result sets can be iterated over multiple times, but it also means large result
+sets use a lot of memory and should be discarded as soon as possible.
 
 Row objects are similar to tuples, but they also allow access to columns by name. ::
 
