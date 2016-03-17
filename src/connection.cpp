@@ -6,6 +6,7 @@
 #include "params.h"
 #include "getdata.h"
 #include "row.h"
+#include <math.h> // modf
 
 struct ConstantDef
 {
@@ -825,8 +826,11 @@ static PyObject* Connection_notifies(PyObject* self, PyObject* args, PyObject* k
     struct timeval tv;
     if (timeout != INFINITY)
     {
+        // TODO: Set a maximum to deal with overflow issues.
+        double integral, fractional;
+        fractional = modf(timeout, &integral);
         tv.tv_sec  = (int)timeout;
-        tv.tv_usec = ((int)(timeout * 1000000)) % 1000000;
+        tv.tv_usec = ((int)(fractional * 1000000) % 1000000);
     }
 
     int retval;
